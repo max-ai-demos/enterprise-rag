@@ -75,8 +75,8 @@ class HybridRetriever:
             return []
 
         ids = all_results["ids"]
-        documents = all_results["documents"]
-        metadatas = all_results["metadatas"]
+        documents = all_results.get("documents") or [""] * len(ids)
+        metadatas = all_results.get("metadatas") or [{}] * len(ids)
 
         # --- Vector retrieval ---
         query_emb = _embed_query(query)
