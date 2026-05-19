@@ -10,6 +10,7 @@ from app.rag.hybrid_retriever import HybridRetriever
 from app.rag.reranker import rerank
 from app.rag.confidence import is_confident, NOT_FOUND_MESSAGE
 from app.rag.prompt import build_messages
+from app.rag.memory import get_memories, add_memory
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,9 @@ def rag_answer(
     rewritten = rewrite_query(query, history)
     logger.info(f"[RAG] Rewritten query: {rewritten!r}")
 
+    # Fetch user memories (no-op if MEM0_ENABLED=false)
+    mem0_memories = get_memories(user_id, rewritten)
+
     # Step 2: Hybrid retrieval
     raw_chunks = _retrieve_across_documents(rewritten, document_ids)
     if not raw_chunks:
@@ -112,7 +116,7 @@ def rag_answer(
         sources.append(source)
 
     # Step 6: Build prompt and call OpenAI
-    messages = build_messages(query, reranked, history)
+    messages = build_messages(query, reranked, history, mem0_memories=mem0_memories or None)
 
     try:
         response = _get_openai().chat.completions.create(
@@ -123,6 +127,8 @@ def rag_answer(
             temperature=0.3,
         )
         answer = response.choices[0].message.content or ""
+        # Persist Q&A to Mem0 for future context (no-op if disabled)
+        add_memory(user_id, query, answer)
     except Exception as e:
         logger.error(f"OpenAI completion failed: {e}")
         return {"answer": "抱歉，AI 服务暂时不可用，请稍后重试。", "sources": [], "session_id": session_id}

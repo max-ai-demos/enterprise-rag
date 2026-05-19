@@ -1,0 +1,10 @@
+# apps/agent/pyproject.toml
+[project]
+name = "enterprise-rag-agent"
+version = "0.1.0"
+description = "Enterprise RAG demo agent"
+requires-python = ">=3.11"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
