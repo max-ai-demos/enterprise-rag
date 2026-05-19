@@ -1,0 +1,8 @@
+# Exclude runtime data files
+*.db
+uploads/
+chroma_db/
+
+# Keep this directory and demo docs
+!.gitignore
+!demo/
