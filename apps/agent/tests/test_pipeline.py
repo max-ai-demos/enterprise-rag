@@ -60,3 +60,17 @@ def test_hybrid_retriever_returns_results(tmp_path, monkeypatch):
     # No duplicates
     ids = [r["id"] for r in results]
     assert len(ids) == len(set(ids))
+
+def test_confidence_check_passes():
+    from app.rag.confidence import is_confident
+    chunks = [{"text": "hello", "score": 0.9}]
+    assert is_confident(chunks) is True
+
+def test_confidence_check_fails_on_low_score():
+    from app.rag.confidence import is_confident
+    chunks = [{"text": "hello", "score": 0.1}]
+    assert is_confident(chunks) is False
+
+def test_confidence_check_fails_on_empty():
+    from app.rag.confidence import is_confident
+    assert is_confident([]) is False
