@@ -114,13 +114,17 @@ def rag_answer(
     # Step 6: Build prompt and call OpenAI
     messages = build_messages(query, reranked, history)
 
-    response = _get_openai().chat.completions.create(
-        model="gpt-4o",
-        messages=messages,
-        stream=False,
-        max_tokens=2048,
-        temperature=0.3,
-    )
-    answer = response.choices[0].message.content or ""
+    try:
+        response = _get_openai().chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            stream=False,
+            max_tokens=2048,
+            temperature=0.3,
+        )
+        answer = response.choices[0].message.content or ""
+    except Exception as e:
+        logger.error(f"OpenAI completion failed: {e}")
+        return {"answer": "抱歉，AI 服务暂时不可用，请稍后重试。", "sources": [], "session_id": session_id}
 
     return {"answer": answer, "sources": sources, "session_id": session_id}

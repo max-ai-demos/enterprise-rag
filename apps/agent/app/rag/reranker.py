@@ -49,7 +49,11 @@ Scores:"""
             scores = json.loads(match.group())
             scored = list(zip(scores, chunks))
             scored.sort(key=lambda x: x[0], reverse=True)
-            return [c for _, c in scored[:top_n]]
+            result = []
+            for llm_score, c in scored[:top_n]:
+                c = {**c, "score": llm_score / 10.0}  # normalize 0-10 to 0-1
+                result.append(c)
+            return result
     except Exception as e:
         logger.warning(f"Reranking failed, using fallback: {e}")
 
