@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# scripts/dev/start-local-agent.sh
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
+cd "$ROOT_DIR"
+
+if [ ! -x "apps/agent/.venv/bin/python" ]; then
+  echo "缺少 apps/agent/.venv，请先：cd apps/agent && python -m venv .venv && .venv/bin/pip install -r requirements.txt"
+  exit 1
+fi
+
+# Read OpenAI key from Mac keychain
+if [ -z "${OPENAI_API_KEY:-}" ]; then
+  OPENAI_API_KEY=$(security find-generic-password -s "openai" -a "OPENAI_API_KEY" -w 2>/dev/null || true)
+fi
+if [ -z "${OPENAI_API_KEY:-}" ]; then
+  echo "❌ OPENAI_API_KEY 未设置且未在钥匙串找到"
+  exit 1
+fi
+export OPENAI_API_KEY
+
+# Read Mem0 key from Mac keychain (service: enterprise-rag, account: MEM0_API_KEY)
+if [ -z "${MEM0_API_KEY:-}" ]; then
+  MEM0_API_KEY=$(security find-generic-password -s "enterprise-rag" -a "MEM0_API_KEY" -w 2>/dev/null || true)
+fi
+export MEM0_API_KEY
+
+find_free_port() {
+  for p in 8001 8002 8003 8004 8005; do
+    if ! lsof -nP -iTCP:"${p}" -sTCP:LISTEN >/dev/null 2>&1; then echo "${p}"; return 0; fi
+  done
+  return 1
+}
+
+AGENT_PORT=${AGENT_PORT:-$(find_free_port)}
+mkdir -p .runtime
+printf '%s\n' "${AGENT_PORT}" > .runtime/local-agent-port
+echo "enterprise-rag agent 启动端口: ${AGENT_PORT}"
+
+cd apps/agent
+exec .venv/bin/uvicorn main:app --host 0.0.0.0 --port "${AGENT_PORT}"
