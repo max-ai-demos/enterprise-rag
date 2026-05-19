@@ -91,13 +91,16 @@ npm install -D @types/better-sqlite3 @types/node
 
 ```bash
 # apps/web/.env.local.example
-AGENT_URL=http://localhost:8000
+# AGENT_URL: update to match running agent port (start-local-agent.sh writes port to .runtime/local-agent-port)
+# Default 8001; smart-agriculture owns 8000 so agent never runs there.
+AGENT_URL=http://localhost:8001
 JWT_SECRET=enterprise-rag-secret-2026
 DATABASE_PATH=../../data/enterprise_rag.db
 ```
 
 ```bash
 cp .env.local.example .env.local
+# If agent is on a different port, update AGENT_URL in .env.local accordingly
 ```
 
 - [ ] **Step 1.4: Update next.config.ts**
@@ -1321,24 +1324,16 @@ git commit -m "feat(web): ChatPanel (JSON, no SSE) and SourceCard with source ju
 **Files:**
 - Create: `apps/web/src/app/(app)/demo/page.tsx`
 
-- [ ] **Step 10.1: Add file serving endpoint to agent**
+- [ ] **Step 10.1: Verify file serving endpoint**
 
-Add to `apps/agent/app/api/document.py`:
+`GET /documents/file/{document_id}` was added to `apps/agent/app/api/document.py` in agent Task 9. Confirm it works before building the demo page:
 
-```python
-from fastapi.responses import FileResponse
-from app.infrastructure.config import settings
-
-@router.get("/file/{document_id}")
-def serve_file(document_id: str, db: Session = Depends(get_db)):
-    repo = DocumentRepository(db)
-    doc = repo.get_by_id(document_id)
-    if not doc:
-        raise HTTPException(404, "Not found")
-    full_path = settings.resolved_upload_dir().parent / doc.file_path
-    if not full_path.exists():
-        raise HTTPException(404, "File not on disk")
-    return FileResponse(str(full_path), filename=doc.filename)
+```bash
+# Agent must be running
+curl http://localhost:8001/documents/demo
+# Pick a document_id from the response, then:
+curl http://localhost:8001/documents/file/<document_id> -I
+# Expected: HTTP 200 with Content-Disposition header
 ```
 
 - [ ] **Step 10.2: Create demo page**

@@ -18,6 +18,7 @@ enterprise-rag/
   scripts/
     init.sql                         ← CREATE TABLE statements
     init_db.py                       ← run init.sql + seed 5 users
+    seed_demo.py                     ← register + ingest data/demo/ files (run after Task 4)
   apps/agent/
     main.py                          ← FastAPI app, routers, CORS
     requirements.txt
@@ -37,7 +38,8 @@ enterprise-rag/
         reranker.py                  ← LLMRerank top 15 → top 5
         confidence.py                ← check top score, return "not found" if low
         prompt.py                    ← system prompt + context builder
-        pipeline.py                  ← orchestrate steps 1–6, return stream
+        pipeline.py                  ← orchestrate steps 1–6, return JSON
+        memory.py                    ← Mem0 get/add (no-op when MEM0_ENABLED=false)
       api/
         document.py                  ← POST /documents/upload, GET, DELETE
         chat.py                      ← POST /chat/message (JSON response)
@@ -78,6 +80,7 @@ llama-index-embeddings-openai==0.1.13
 llama-index-vector-stores-chroma==0.1.10
 llama-index-retrievers-bm25==0.3.0
 chromadb==0.5.5
+mem0ai==1.1.7
 bcrypt==4.1.3
 pytest==8.2.0
 pytest-asyncio==0.23.7
@@ -94,6 +97,7 @@ UPLOAD_DIR=../../data/uploads
 DEMO_DIR=../../data/demo
 CHROMA_DIR=../../data/chroma_db
 MEM0_ENABLED=false
+MEM0_API_KEY=
 RERANK_SCORE_THRESHOLD=0.3
 ```
 
@@ -111,6 +115,7 @@ class Settings(BaseSettings):
     demo_dir: str = "../../data/demo"
     chroma_dir: str = "../../data/chroma_db"
     mem0_enabled: bool = False
+    mem0_api_key: str = ""
     rerank_score_threshold: float = 0.3
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -892,6 +897,127 @@ pytest tests/test_ingestion.py -v
 ```bash
 git add apps/agent/app/rag/ingestion.py apps/agent/app/infrastructure/file_storage.py apps/agent/tests/test_ingestion.py
 git commit -m "feat(agent): document ingestion - parse PDF/DOCX/XLSX/TXT + embed to ChromaDB"
+```
+
+---
+
+## Task 4b: Demo document seeding
+
+**Files:**
+- Create: `scripts/seed_demo.py`
+
+> Run after Task 4 (needs ingest_document) and after `scripts/init_db.py`. Place demo files in `data/demo/` before running.
+
+- [ ] **Step 4b.1: Create seed_demo.py**
+
+```python
+#!/usr/bin/env python3
+# scripts/seed_demo.py
+# Run: cd apps/agent && .venv/bin/python ../../scripts/seed_demo.py
+import sys
+import os
+import sqlite3
+import uuid
+from pathlib import Path
+
+ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(ROOT / "apps" / "agent"))
+os.chdir(ROOT / "apps" / "agent")  # pydantic-settings finds .env here
+
+from app.rag.ingestion import ingest_document
+
+DB_PATH = ROOT / "data" / "enterprise_rag.db"
+DEMO_DIR = ROOT / "data" / "demo"
+SUPPORTED = {"pdf", "docx", "xlsx", "txt"}
+
+
+def main():
+    if not DEMO_DIR.exists():
+        print(f"Demo dir not found: {DEMO_DIR}")
+        print("Create data/demo/ and add PDF/DOCX/XLSX/TXT files.")
+        return
+
+    con = sqlite3.connect(DB_PATH)
+    files = sorted(
+        f for f in DEMO_DIR.iterdir()
+        if f.suffix.lstrip(".").lower() in SUPPORTED
+    )
+    if not files:
+        print("No supported files in data/demo/")
+        return
+
+    for f in files:
+        file_type = f.suffix.lstrip(".").lower()
+        rel_path = f"demo/{f.name}"
+
+        row = con.execute(
+            "SELECT id, status FROM documents WHERE file_path = ?", (rel_path,)
+        ).fetchone()
+
+        if row and row[1] == "ready":
+            print(f"Skip (ready): {f.name}")
+            continue
+
+        if row:
+            doc_id = row[0]
+        else:
+            doc_id = str(uuid.uuid4())
+            con.execute(
+                "INSERT INTO documents (id, user_id, filename, file_path, file_type, status, is_demo) "
+                "VALUES (?, NULL, ?, ?, ?, 'pending', 1)",
+                (doc_id, f.name, rel_path, file_type),
+            )
+            con.commit()
+            print(f"Registered: {f.name}")
+
+        try:
+            count = ingest_document(doc_id, str(f), file_type)
+            con.execute(
+                "UPDATE documents SET status='ready', chunk_count=? WHERE id=?",
+                (count, doc_id),
+            )
+            con.commit()
+            print(f"  ✓ {f.name} → {count} chunks")
+        except Exception as e:
+            con.execute("UPDATE documents SET status='failed' WHERE id=?", (doc_id,))
+            con.commit()
+            print(f"  ✗ {f.name}: {e}")
+
+    con.close()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+- [ ] **Step 4b.2: Place demo files and run**
+
+```bash
+# Add at least one demo document to data/demo/
+mkdir -p data/demo
+# Copy your demo PDF/DOCX/XLSX files here, e.g.:
+# cp ~/Downloads/enterprise-demo.pdf data/demo/
+
+cd apps/agent
+.venv/bin/python ../../scripts/seed_demo.py
+# Expected per file:
+# Registered: enterprise-demo.pdf
+#   ✓ enterprise-demo.pdf → 42 chunks
+```
+
+- [ ] **Step 4b.3: Verify demo docs appear in API**
+
+```bash
+# Agent must be running
+curl http://localhost:8000/documents/demo
+# Expected: list of demo documents with status "ready"
+```
+
+- [ ] **Step 4b.4: Commit**
+
+```bash
+git add scripts/seed_demo.py
+git commit -m "feat: demo document seed script"
 ```
 
 ---
@@ -1696,6 +1822,20 @@ def delete_document(document_id: str, user_id: str, db: Session = Depends(get_db
     delete_document_vectors(document_id)
     repo.delete(document_id)
     return {"deleted": True}
+
+
+@router.get("/file/{document_id}")
+def serve_file(document_id: str, db: Session = Depends(get_db)):
+    from fastapi.responses import FileResponse
+    from app.infrastructure.config import settings as cfg
+    repo = DocumentRepository(db)
+    doc = repo.get_by_id(document_id)
+    if not doc:
+        raise HTTPException(404, "Not found")
+    full_path = cfg.resolved_upload_dir().parent / doc.file_path
+    if not full_path.exists():
+        raise HTTPException(404, "File not on disk")
+    return FileResponse(str(full_path), filename=doc.filename)
 ```
 
 - [ ] **Step 9.3: Run tests**
@@ -1964,6 +2104,7 @@ dependencies = [
   "llama-index-vector-stores-chroma==0.1.10",
   "llama-index-retrievers-bm25==0.3.0",
   "chromadb==0.5.3",
+  "mem0ai==1.1.7",
   "rank-bm25==0.2.2",
   "openai==1.35.0",
   "bcrypt==4.1.3",
@@ -2022,6 +2163,138 @@ git commit -m "feat(agent): health endpoint with version from pyproject.toml"
 
 ---
 
+## Task 13: Mem0 memory integration (feature-flagged)
+
+**Files:**
+- Create: `apps/agent/app/rag/memory.py`
+- Create: `apps/agent/tests/test_memory.py`
+- Modify: `apps/agent/app/rag/pipeline.py` (add get/add_memory calls)
+
+> Guard: all Mem0 calls are no-ops when `MEM0_ENABLED=false` or `MEM0_API_KEY` is empty.
+> Key is read from Mac keychain by `start-local-agent.sh` (service "enterprise-rag", account "MEM0_API_KEY").
+
+- [ ] **Step 13.1: Write failing tests**
+
+```python
+# apps/agent/tests/test_memory.py
+def test_get_memories_returns_empty_when_disabled(monkeypatch):
+    from app.rag import memory
+    monkeypatch.setattr(memory.settings, "mem0_enabled", False)
+    assert memory.get_memories("user1", "payment deadline") == []
+
+def test_add_memory_is_noop_when_disabled(monkeypatch):
+    from app.rag import memory
+    monkeypatch.setattr(memory.settings, "mem0_enabled", False)
+    memory.add_memory("user1", "query", "answer")  # must not raise
+
+def test_get_memories_returns_empty_when_no_key(monkeypatch):
+    from app.rag import memory
+    monkeypatch.setattr(memory.settings, "mem0_enabled", True)
+    monkeypatch.setattr(memory.settings, "mem0_api_key", "")
+    assert memory.get_memories("user1", "query") == []
+```
+
+- [ ] **Step 13.2: Run to confirm failure**
+
+```bash
+cd apps/agent
+pytest tests/test_memory.py -v
+# Expected: ImportError (memory.py doesn't exist yet)
+```
+
+- [ ] **Step 13.3: Create memory.py**
+
+```python
+# apps/agent/app/rag/memory.py
+from app.infrastructure.config import settings
+
+_client = None
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        from mem0 import MemoryClient
+        _client = MemoryClient(api_key=settings.mem0_api_key)
+    return _client
+
+
+def get_memories(user_id: str, query: str) -> list[str]:
+    """Return relevant memories for user. No-op if MEM0_ENABLED=false or key missing."""
+    if not settings.mem0_enabled or not settings.mem0_api_key:
+        return []
+    try:
+        results = _get_client().search(query, user_id=user_id, limit=5)
+        return [r["memory"] for r in results]
+    except Exception:
+        return []
+
+
+def add_memory(user_id: str, query: str, answer: str) -> None:
+    """Persist Q&A turn to Mem0 for future sessions. No-op if MEM0_ENABLED=false."""
+    if not settings.mem0_enabled or not settings.mem0_api_key:
+        return
+    try:
+        _get_client().add(
+            [
+                {"role": "user", "content": query},
+                {"role": "assistant", "content": answer},
+            ],
+            user_id=user_id,
+        )
+    except Exception:
+        pass
+```
+
+- [ ] **Step 13.4: Run tests**
+
+```bash
+pytest tests/test_memory.py -v
+# Expected: 3 tests pass
+```
+
+- [ ] **Step 13.5: Add Mem0 calls to pipeline.py**
+
+In `apps/agent/app/rag/pipeline.py`, make three changes:
+
+**a) Add import at top of file:**
+```python
+from app.rag.memory import get_memories, add_memory
+```
+
+**b) After `rewritten = rewrite_query(query, history)` line, add:**
+```python
+    # Fetch user memories (no-op if MEM0_ENABLED=false)
+    mem0_memories = get_memories(user_id, rewritten)
+```
+
+**c) Update build_messages call:**
+```python
+    messages = build_messages(query, reranked, history, mem0_memories=mem0_memories or None)
+```
+
+**d) After `answer = response.choices[0].message.content or ""`, add:**
+```python
+    # Persist Q&A to Mem0 for future context (no-op if disabled)
+    add_memory(user_id, query, answer)
+```
+
+- [ ] **Step 13.6: Verify no regression**
+
+```bash
+pytest tests/ -v
+# Expected: all tests still pass
+```
+
+- [ ] **Step 13.7: Commit**
+
+```bash
+git add apps/agent/app/rag/memory.py apps/agent/tests/test_memory.py apps/agent/app/rag/pipeline.py
+git commit -m "feat(agent): Mem0 memory integration (feature-flagged via MEM0_ENABLED)"
+```
+
+---
+
 ## Summary
 
 After completing all tasks, the agent exposes:
@@ -2038,4 +2311,6 @@ After completing all tasks, the agent exposes:
 | `GET /sessions?user_id=` | List sessions |
 | `GET /sessions/{id}/messages?user_id=` | Get message history |
 
-**To run:** `cd apps/agent && uvicorn main:app --reload --port 8000`
+**Start order:** `scripts/init_db.py` → `start-local-agent.sh` → `seed_demo.py` (once, after placing files in `data/demo/`)
+
+**To run (dev):** `cd apps/agent && uvicorn main:app --reload --port 8001`
