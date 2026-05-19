@@ -1,0 +1,34 @@
+@tailwind utilities;
+
+.sprSnippetHit {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* PDF text selection */
+.pdf-container .react-pdf__Page__textContent ::selection,
+.pdf-container .textLayer ::selection {
+  background: #007aff26;
+}
+
+.pdf-container .react-pdf__Page__textContent ::-moz-selection,
+.pdf-container .textLayer ::-moz-selection {
+  background: #007aff26;
+}
+
+/* 覆盖内联的样式，不同的page可能size不一样 */
+.pdf-page .react-pdf__Page__textContent,
+.pdf-page .react-pdf__Page__annotations {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* 确保 loading 消息居中显示 */
+.react-pdf__message--loading {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  width: 100% !important;
+}

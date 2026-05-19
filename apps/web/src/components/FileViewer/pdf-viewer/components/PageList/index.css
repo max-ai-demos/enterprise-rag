@@ -1,0 +1,9 @@
+.pdf-page {
+  width: calc(var(--scale-factor) * var(--pdf-origin-width) * 1px);
+  height: calc(var(--scale-factor) * var(--pdf-origin-height) * 1px);
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  margin: 0 auto;
+  transform-origin: 'center';
+}
