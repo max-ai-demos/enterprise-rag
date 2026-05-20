@@ -4,31 +4,31 @@ import types
 import pytest
 from unittest.mock import MagicMock
 
-# ---------------------------------------------------------------------------
-# Stub heavy optional deps so summarizer + ingestion modules import cleanly
-# without needing the real packages installed in the test environment.
-# ---------------------------------------------------------------------------
-def _stub_modules():
-    stubs = [
-        "chromadb",
-        "llama_index",
-        "llama_index.core",
-        "llama_index.core.node_parser",
-        "llama_index.embeddings",
-        "llama_index.embeddings.openai",
-    ]
-    for name in stubs:
+_STUB_NAMES = [
+    "chromadb",
+    "llama_index",
+    "llama_index.core",
+    "llama_index.core.node_parser",
+    "llama_index.embeddings",
+    "llama_index.embeddings.openai",
+]
+
+
+@pytest.fixture(autouse=True)
+def _stub_heavy_deps():
+    """Install lightweight stubs for heavy deps, then restore sys.modules after each test."""
+    saved = {name: sys.modules.get(name) for name in _STUB_NAMES}
+
+    for name in _STUB_NAMES:
         if name not in sys.modules:
             sys.modules[name] = types.ModuleType(name)
 
-    # chromadb stubs
     chromadb_mod = sys.modules["chromadb"]
     if not hasattr(chromadb_mod, "HttpClient"):
         chromadb_mod.HttpClient = MagicMock()
     if not hasattr(chromadb_mod, "PersistentClient"):
         chromadb_mod.PersistentClient = MagicMock()
 
-    # llama_index.core.Settings, SentenceSplitter stubs
     core_mod = sys.modules["llama_index.core"]
     if not hasattr(core_mod, "Settings"):
         core_mod.Settings = MagicMock()
@@ -36,13 +36,17 @@ def _stub_modules():
     if not hasattr(node_parser_mod, "SentenceSplitter"):
         node_parser_mod.SentenceSplitter = MagicMock()
 
-    # llama_index.embeddings.openai.OpenAIEmbedding stub
     oai_embed_mod = sys.modules["llama_index.embeddings.openai"]
     if not hasattr(oai_embed_mod, "OpenAIEmbedding"):
         oai_embed_mod.OpenAIEmbedding = MagicMock()
 
+    yield
 
-_stub_modules()
+    for name, original in saved.items():
+        if original is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
 
 
 def test_summarize_short_document():
