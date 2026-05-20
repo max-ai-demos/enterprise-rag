@@ -2,11 +2,12 @@
 import json
 import logging
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.db.repository import DocumentRepository, SessionRepository, MessageRepository
-from app.rag.pipeline import rag_answer
+from app.rag.pipeline import rag_answer, rag_answer_stream
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -80,3 +81,64 @@ def chat_message(req: ChatRequest, db: Session = Depends(get_db)):
     sess_repo.touch(session_id)
 
     return result
+
+
+@router.post("/stream")
+def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
+    """SSE streaming chat. Yields text/event-stream with JSON data lines."""
+    doc_repo = DocumentRepository(db)
+    sess_repo = SessionRepository(db)
+    msg_repo = MessageRepository(db)
+
+    if req.document_ids:
+        doc_ids = req.document_ids
+    elif req.mode == "demo":
+        doc_ids = [d.id for d in doc_repo.list_demo() if d.status == "ready"]
+    else:
+        doc_ids = [d.id for d in doc_repo.list_for_user(req.user_id) if d.status == "ready"]
+
+    all_docs = (doc_repo.list_demo() if req.mode == "demo" else doc_repo.list_for_user(req.user_id))
+    doc_meta = {d.id: {"filename": d.filename, "file_type": d.file_type} for d in all_docs}
+
+    session_id = req.session_id
+    if not session_id:
+        session = sess_repo.create(user_id=req.user_id, mode=req.mode)
+        session_id = session.id
+    else:
+        session = sess_repo.get_by_id(session_id)
+        if not session:
+            session = sess_repo.create(user_id=req.user_id, mode=req.mode)
+            session_id = session.id
+
+    recent_msgs = msg_repo.get_recent(session_id, limit=6)
+    history = [{"role": m.role, "content": m.content} for m in recent_msgs]
+
+    msg_repo.create(session_id=session_id, role="user", content=req.query)
+    sess_repo.update_title(session_id, req.query)
+
+    def event_stream():
+        full_answer = ""
+        sources: list = []
+        for event in rag_answer_stream(
+            query=req.query,
+            user_id=req.user_id,
+            session_id=session_id,
+            document_ids=doc_ids,
+            history=history,
+            document_metadata=doc_meta,
+        ):
+            if event["type"] == "sources":
+                sources = event["sources"]
+            if event["type"] == "end":
+                full_answer = event["answer"]
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+        msg_repo.create(
+            session_id=session_id,
+            role="assistant",
+            content=full_answer,
+            sources=json.dumps(sources),
+        )
+        sess_repo.touch(session_id)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

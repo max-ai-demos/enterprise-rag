@@ -1,6 +1,7 @@
 # apps/agent/app/rag/pipeline.py
 import json
 import logging
+from typing import Generator
 import chromadb
 from openai import OpenAI
 from app.infrastructure.config import settings
@@ -51,6 +52,36 @@ def _retrieve_across_documents(
     return all_results[:top_k]
 
 
+def _build_sources(reranked: list[dict]) -> list[dict]:
+    """Extract source metadata from reranked chunks."""
+    sources = []
+    for chunk in reranked:
+        meta = chunk["metadata"]
+        source = {
+            "document_id": meta.get("document_id", ""),
+            "filename": meta.get("filename", ""),
+            "file_type": meta.get("file_type", ""),
+            "chunk_text": chunk["text"][:200],
+            "score": round(chunk["score"], 4),
+        }
+        if meta.get("page_num"):
+            source["page_num"] = int(meta["page_num"])
+            source["page_idx"] = int(meta.get("page_idx", meta["page_num"]))
+            bbox_raw = meta.get("bbox")
+            if bbox_raw:
+                try:
+                    source["bbox"] = json.loads(bbox_raw)
+                except Exception:
+                    pass
+        if meta.get("paragraph_idx") is not None:
+            source["paragraph_idx"] = int(meta["paragraph_idx"])
+        if meta.get("sheet_name"):
+            source["sheet_name"] = meta["sheet_name"]
+            source["row_start"] = int(meta.get("row_start", 1))
+        sources.append(source)
+    return sources
+
+
 def rag_answer(
     query: str,
     user_id: str,
@@ -89,31 +120,7 @@ def rag_answer(
         return {"answer": NOT_FOUND_MESSAGE, "sources": [], "session_id": session_id}
 
     # Step 5: Build sources for response
-    sources = []
-    for chunk in reranked:
-        meta = chunk["metadata"]
-        source = {
-            "document_id": meta.get("document_id", ""),
-            "filename": meta.get("filename", ""),
-            "file_type": meta.get("file_type", ""),
-            "chunk_text": chunk["text"][:200],
-            "score": round(chunk["score"], 4),
-        }
-        if meta.get("page_num"):
-            source["page_num"] = int(meta["page_num"])
-            source["page_idx"] = int(meta.get("page_idx", meta["page_num"]))
-            bbox_raw = meta.get("bbox")
-            if bbox_raw:
-                try:
-                    source["bbox"] = json.loads(bbox_raw)
-                except Exception:
-                    pass
-        if meta.get("paragraph_idx") is not None:
-            source["paragraph_idx"] = int(meta["paragraph_idx"])
-        if meta.get("sheet_name"):
-            source["sheet_name"] = meta["sheet_name"]
-            source["row_start"] = int(meta.get("row_start", 1))
-        sources.append(source)
+    sources = _build_sources(reranked)
 
     # Step 6: Build prompt and call OpenAI
     messages = build_messages(query, reranked, history, mem0_memories=mem0_memories or None)
@@ -134,3 +141,63 @@ def rag_answer(
         return {"answer": "抱歉，AI 服务暂时不可用，请稍后重试。", "sources": [], "session_id": session_id}
 
     return {"answer": answer, "sources": sources, "session_id": session_id}
+
+
+def rag_answer_stream(
+    query: str,
+    user_id: str,
+    session_id: str,
+    document_ids: list[str],
+    history: list[dict],
+    document_metadata: dict[str, dict],
+) -> Generator[dict, None, None]:
+    """
+    Streaming RAG pipeline. Yields dicts:
+      {"type": "sources", "sources": [...], "session_id": str}
+      {"type": "delta",   "content": str}
+      {"type": "end",     "answer": str}
+      {"type": "error",   "message": str}
+    """
+    rewritten = rewrite_query(query, history)
+    mem0_memories = get_memories(user_id, rewritten)
+
+    raw_chunks = _retrieve_across_documents(rewritten, document_ids)
+    if not raw_chunks:
+        yield {"type": "error", "message": "没有可查询的文档内容。"}
+        return
+
+    for chunk in raw_chunks:
+        doc_id = chunk["metadata"].get("document_id", "")
+        if doc_id in document_metadata:
+            chunk["metadata"].update(document_metadata[doc_id])
+
+    reranked = rerank(rewritten, raw_chunks, top_n=5)
+
+    if not is_confident(reranked):
+        yield {"type": "error", "message": NOT_FOUND_MESSAGE}
+        return
+
+    sources = _build_sources(reranked)
+    yield {"type": "sources", "sources": sources, "session_id": session_id}
+
+    messages = build_messages(query, reranked, history, mem0_memories=mem0_memories or None)
+
+    try:
+        full_answer = ""
+        stream = _get_openai().chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            stream=True,
+            max_tokens=2048,
+            temperature=0.3,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content or ""
+            if delta:
+                full_answer += delta
+                yield {"type": "delta", "content": delta}
+        add_memory(user_id, query, full_answer)
+        yield {"type": "end", "answer": full_answer}
+    except Exception as e:
+        logger.error(f"Streaming failed: {e}")
+        yield {"type": "error", "message": "AI 服务暂时不可用，请稍后重试。"}
