@@ -1,19 +1,68 @@
 # apps/agent/tests/test_summarizer.py
+import sys
+import types
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
+
+# ---------------------------------------------------------------------------
+# Stub heavy optional deps so summarizer + ingestion modules import cleanly
+# without needing the real packages installed in the test environment.
+# ---------------------------------------------------------------------------
+def _stub_modules():
+    stubs = [
+        "chromadb",
+        "llama_index",
+        "llama_index.core",
+        "llama_index.core.node_parser",
+        "llama_index.embeddings",
+        "llama_index.embeddings.openai",
+    ]
+    for name in stubs:
+        if name not in sys.modules:
+            sys.modules[name] = types.ModuleType(name)
+
+    # chromadb stubs
+    chromadb_mod = sys.modules["chromadb"]
+    if not hasattr(chromadb_mod, "HttpClient"):
+        chromadb_mod.HttpClient = MagicMock()
+    if not hasattr(chromadb_mod, "PersistentClient"):
+        chromadb_mod.PersistentClient = MagicMock()
+
+    # llama_index.core.Settings, SentenceSplitter stubs
+    core_mod = sys.modules["llama_index.core"]
+    if not hasattr(core_mod, "Settings"):
+        core_mod.Settings = MagicMock()
+    node_parser_mod = sys.modules["llama_index.core.node_parser"]
+    if not hasattr(node_parser_mod, "SentenceSplitter"):
+        node_parser_mod.SentenceSplitter = MagicMock()
+
+    # llama_index.embeddings.openai.OpenAIEmbedding stub
+    oai_embed_mod = sys.modules["llama_index.embeddings.openai"]
+    if not hasattr(oai_embed_mod, "OpenAIEmbedding"):
+        oai_embed_mod.OpenAIEmbedding = MagicMock()
+
+
+_stub_modules()
 
 
 def test_summarize_short_document():
     """Short document → single LLM call with gpt-4o."""
     mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
     mock_response.choices[0].message.content = "这是文档摘要。"
 
-    with patch("app.rag.summarizer.OpenAI") as MockOpenAI:
-        mock_client = MockOpenAI.return_value
-        mock_client.chat.completions.create.return_value = mock_response
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = mock_response
 
-        from app.rag.summarizer import summarize_document
+    from app.rag.summarizer import summarize_document
+    import app.rag.summarizer as summarizer_mod
+
+    original = summarizer_mod._get_client
+    summarizer_mod._get_client = lambda: mock_client
+    try:
         result = summarize_document("短文档内容，不超过6000字。")
+    finally:
+        summarizer_mod._get_client = original
 
     assert result == "这是文档摘要。"
     mock_client.chat.completions.create.assert_called_once()
@@ -24,8 +73,10 @@ def test_summarize_short_document():
 def test_summarize_long_document():
     """Long document → map-reduce: mini calls per chunk + one final gpt-4o call."""
     mock_mini_response = MagicMock()
+    mock_mini_response.choices = [MagicMock()]
     mock_mini_response.choices[0].message.content = "片段摘要。"
     mock_final_response = MagicMock()
+    mock_final_response.choices = [MagicMock()]
     mock_final_response.choices[0].message.content = "最终汇总摘要。"
 
     call_count = {"n": 0}
@@ -36,24 +87,38 @@ def test_summarize_long_document():
             return mock_mini_response
         return mock_final_response
 
-    with patch("app.rag.summarizer.OpenAI") as MockOpenAI:
-        mock_client = MockOpenAI.return_value
-        mock_client.chat.completions.create.side_effect = lambda **kw: side_effect(**kw)
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = lambda **kw: side_effect(**kw)
 
-        from app.rag.summarizer import summarize_document, MAX_CHARS_PER_CALL
+    from app.rag.summarizer import summarize_document, MAX_CHARS_PER_CALL
+    import app.rag.summarizer as summarizer_mod
+
+    original = summarizer_mod._get_client
+    summarizer_mod._get_client = lambda: mock_client
+    try:
         long_text = "内容。" * (MAX_CHARS_PER_CALL // 3 + 1)  # forces 2 chunks
         result = summarize_document(long_text)
+    finally:
+        summarizer_mod._get_client = original
 
     assert result == "最终汇总摘要。"
     assert call_count["n"] == 3  # 2 mini + 1 final
 
 
-def test_get_document_full_text_txt(tmp_path):
-    """Extract full text from a TXT file."""
-    txt_file = tmp_path / "test.txt"
-    txt_file.write_text("第一段。\n第二段。", encoding="utf-8")
-
+def test_get_document_full_text_uses_parse_document(monkeypatch):
+    monkeypatch.setattr(
+        "app.rag.ingestion.parse_document",
+        lambda path, ftype: [{"text": "chunk one"}, {"text": "chunk two"}],
+    )
     from app.rag.summarizer import get_document_full_text
-    text = get_document_full_text(str(txt_file), "txt")
-    assert "第一段" in text
-    assert "第二段" in text
+    result = get_document_full_text("/fake/path.txt", "txt")
+    assert result == "chunk one\n\nchunk two"
+
+
+def test_summarize_raises_on_empty_choices(monkeypatch):
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = MagicMock(choices=[])
+    monkeypatch.setattr("app.rag.summarizer._get_client", lambda: mock_client)
+    from app.rag.summarizer import summarize_document
+    with pytest.raises(ValueError, match="empty choices"):
+        summarize_document("short text")

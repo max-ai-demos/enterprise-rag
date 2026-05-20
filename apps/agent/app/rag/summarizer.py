@@ -1,6 +1,6 @@
 # apps/agent/app/rag/summarizer.py
 import logging
-from openai import OpenAI
+import openai
 from app.infrastructure.config import settings
 
 logger = logging.getLogger(__name__)
@@ -33,8 +33,21 @@ _REDUCE_PROMPT = """以下是一份长文档各片段的摘要，请整合成一
 完整摘要："""
 
 
-def _client() -> OpenAI:
-    return OpenAI(api_key=settings.openai_api_key)
+_openai_client: openai.OpenAI | None = None
+
+
+def _get_client() -> openai.OpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = openai.OpenAI(api_key=settings.openai_api_key)
+    return _openai_client
+
+
+def _extract_content(resp) -> str:
+    if not resp.choices:
+        raise ValueError("OpenAI returned empty choices")
+    content = resp.choices[0].message.content
+    return content or ""
 
 
 def summarize_document(full_text: str) -> str:
@@ -43,35 +56,40 @@ def summarize_document(full_text: str) -> str:
         return ""
 
     if len(full_text) <= MAX_CHARS_PER_CALL:
-        resp = _client().chat.completions.create(
+        client = _get_client()
+        resp = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": _DIRECT_PROMPT.format(content=full_text)}],
             max_tokens=800,
             temperature=0.3,
         )
-        return resp.choices[0].message.content or ""
+        return _extract_content(resp)
 
     # Map: summarize each chunk with cheap model
+    client = _get_client()
     chunks = [full_text[i:i + MAX_CHARS_PER_CALL] for i in range(0, len(full_text), MAX_CHARS_PER_CALL)]
     partial = []
-    for chunk in chunks:
-        resp = _client().chat.completions.create(
+    for i, chunk in enumerate(chunks):
+        resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": _MAP_PROMPT.format(content=chunk)}],
             max_tokens=300,
             temperature=0.3,
         )
-        partial.append(resp.choices[0].message.content or "")
+        partial_text = _extract_content(resp)
+        if not partial_text:
+            logger.warning("Map summarization returned empty content for chunk %d", i)
+        partial.append(partial_text)
 
     # Reduce: merge partial summaries into one
     combined = "\n\n".join(f"[第{i+1}部分]\n{s}" for i, s in enumerate(partial))
-    resp = _client().chat.completions.create(
+    resp = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": _REDUCE_PROMPT.format(summaries=combined)}],
         max_tokens=800,
         temperature=0.3,
     )
-    return resp.choices[0].message.content or ""
+    return _extract_content(resp)
 
 
 def get_document_full_text(file_path: str, file_type: str) -> str:
