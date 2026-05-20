@@ -43,6 +43,19 @@ class DocumentRepository:
             doc.chunk_count = chunk_count
             self.db.commit()
 
+    def update_summary(self, doc_id: str, summary: str):
+        doc = self.get_by_id(doc_id)
+        if doc:
+            doc.summary = summary
+            doc.summary_status = "ready"
+            self.db.commit()
+
+    def update_summary_status(self, doc_id: str, status: str):
+        doc = self.get_by_id(doc_id)
+        if doc:
+            doc.summary_status = status
+            self.db.commit()
+
     def delete(self, doc_id: str):
         doc = self.get_by_id(doc_id)
         if doc:

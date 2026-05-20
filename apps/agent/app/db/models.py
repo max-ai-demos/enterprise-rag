@@ -28,6 +28,8 @@ class Document(Base):
     is_demo = Column(Integer, default=0)
     chunk_count = Column(Integer, default=0)
     file_size = Column(Integer)
+    summary = Column(Text, nullable=True)
+    summary_status = Column(String(20), default="none")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

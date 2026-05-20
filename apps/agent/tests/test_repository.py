@@ -47,3 +47,42 @@ def test_session_create_and_messages(db_session):
     msgs = msg_repo.list_for_session(session.id)
     assert len(msgs) == 1
     assert msgs[0].content == "hello"
+
+
+def test_update_summary(db_session):
+    import uuid
+    from app.db.models import Document
+    doc = Document(
+        id=str(uuid.uuid4()),
+        user_id=None,
+        filename="test.pdf",
+        file_path="demo/test.pdf",
+        file_type="pdf",
+    )
+    db_session.add(doc)
+    db_session.commit()
+
+    from app.db.repository import DocumentRepository
+    repo = DocumentRepository(db_session)
+    repo.update_summary(doc.id, "这是一份摘要。")
+    db_session.refresh(doc)
+    assert doc.summary == "这是一份摘要。"
+    assert doc.summary_status == "ready"
+
+
+def test_update_summary_status(db_session):
+    import uuid
+    from app.db.models import Document
+    from app.db.repository import DocumentRepository
+    doc = Document(
+        id=str(uuid.uuid4()),
+        filename="test.pdf",
+        file_path="demo/test.pdf",
+        file_type="pdf",
+    )
+    db_session.add(doc)
+    db_session.commit()
+    repo = DocumentRepository(db_session)
+    repo.update_summary_status(doc.id, "pending")
+    db_session.refresh(doc)
+    assert doc.summary_status == "pending"
