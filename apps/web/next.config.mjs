@@ -5,7 +5,10 @@ const require = createRequire(import.meta.url)
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  experimental: { serverComponentsExternalPackages: ['better-sqlite3'] },
+  experimental: {
+    serverComponentsExternalPackages: ['better-sqlite3'],
+    serverActions: { bodySizeLimit: '50mb' },
+  },
   webpack: (config, { isServer }) => {
     // canvas stub to avoid pdfjs-dist pulling in node-canvas on the client
     config.resolve.alias = {

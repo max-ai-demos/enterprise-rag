@@ -1,6 +1,6 @@
 # apps/agent/app/api/document.py
 import logging
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, Request, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.db.database import get_db
@@ -35,11 +35,17 @@ def _run_ingestion(doc_id: str, file_path: str, file_type: str, db_path: str):
 
 @router.post("/upload")
 async def upload_document(
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    user_id: str = Form(...),
+    user_id: str = Form(None),
     db: Session = Depends(get_db),
 ):
+    # Accept user_id from header (proxy) or form field (direct calls)
+    if not user_id:
+        user_id = request.headers.get("x-user-id")
+    if not user_id:
+        raise HTTPException(400, "user_id is required")
     file_type = _ext_to_type(file.filename or "")
     if file_type not in ALLOWED_TYPES:
         raise HTTPException(400, f"Unsupported file type: {file_type}")

@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 
 const PdfViewer = dynamic(
@@ -91,7 +91,8 @@ function Viewer({ doc, jump }: { doc: Doc; jump: JumpLocation | null }) {
 
 export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onUploaded }: ViewerPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -108,21 +109,63 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
   const selectedDoc = docs.find(d => d.document_id === selectedId) ?? null
   const activeJump = jumpLocation?.document_id === selectedId ? jumpLocation : null
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file || !userId) return
-    setUploading(true)
+  async function uploadFile(file: File) {
+    if (!file) return
     const form = new FormData()
     form.append('file', file)
-    form.append('user_id', userId)
-    await fetch('/api/agent/documents/upload', { method: 'POST', body: form })
-    setUploading(false)
+    // user_id is injected via x-user-id header by the proxy
+
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', '/api/agent/documents/upload')
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100))
+      }
+      xhr.onload = () => {
+        setUploadProgress(null)
+        if (xhr.status >= 200 && xhr.status < 300) resolve()
+        else reject(new Error(`Upload failed: ${xhr.status}`))
+      }
+      xhr.onerror = () => { setUploadProgress(null); reject(new Error('Upload error')) }
+      xhr.send(form)
+    })
+
     onUploaded?.()
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) uploadFile(file)
+  }
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) uploadFile(file)
+  }, [userId, onUploaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback(() => setDragOver(false), [])
+
   return (
-    <div className="flex flex-col h-full border-r bg-white">
+    <div
+      className={`flex flex-col h-full border-r bg-white relative ${dragOver ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
+      onDrop={mode === 'chat' ? handleDrop : undefined}
+      onDragOver={mode === 'chat' ? handleDragOver : undefined}
+      onDragLeave={mode === 'chat' ? handleDragLeave : undefined}
+    >
+      {dragOver && (
+        <div className="absolute inset-0 z-20 bg-blue-50/80 flex items-center justify-center pointer-events-none">
+          <p className="text-blue-600 font-medium text-sm">松开即可上传</p>
+        </div>
+      )}
+
       <div className="flex items-center gap-1 px-3 py-2 border-b bg-gray-50 overflow-x-auto shrink-0 min-h-[42px]">
         {docs.map(doc => (
           <button
@@ -136,6 +179,9 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
           >
             <span>{fileIcon(doc.file_type)}</span>
             <span className="max-w-[120px] truncate">{doc.filename}</span>
+            {doc.status === 'processing' && (
+              <span className="text-[10px] text-orange-500 ml-1">处理中</span>
+            )}
           </button>
         ))}
         {docs.length === 0 && (
@@ -148,24 +194,42 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
               type="file"
               className="hidden"
               accept=".pdf,.docx,.xlsx,.txt"
-              onChange={handleUpload}
+              onChange={handleFileInput}
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
+              disabled={uploadProgress !== null}
               className="ml-auto px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded whitespace-nowrap disabled:opacity-50 shrink-0"
             >
-              {uploading ? '上传中...' : '+ 上传'}
+              {uploadProgress !== null ? `上传中 ${uploadProgress}%` : '+ 上传'}
             </button>
           </>
         )}
       </div>
+
+      {/* Upload progress bar */}
+      {uploadProgress !== null && (
+        <div className="w-full h-1 bg-gray-100 shrink-0">
+          <div
+            className="h-1 bg-blue-500 transition-all duration-200"
+            style={{ width: `${uploadProgress}%` }}
+          />
+        </div>
+      )}
+
       <div className="flex-1 overflow-hidden">
         {selectedDoc ? (
           <Viewer doc={selectedDoc} jump={activeJump} />
         ) : (
-          <div className="flex items-center justify-center h-full text-sm text-gray-400">
-            {mode === 'chat' ? '点击右上角「+ 上传」添加文档' : '暂无演示文档'}
+          <div className="flex flex-col items-center justify-center h-full text-sm text-gray-400 gap-2">
+            {mode === 'chat' ? (
+              <>
+                <p>点击右上角「+ 上传」或将文件拖拽至此</p>
+                <p className="text-xs">支持 PDF、Word、Excel、TXT</p>
+              </>
+            ) : (
+              <p>暂无演示文档</p>
+            )}
           </div>
         )}
       </div>

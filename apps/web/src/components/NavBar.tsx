@@ -1,5 +1,6 @@
 'use client'
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 
 interface NavBarProps { username: string }
@@ -7,6 +8,11 @@ interface NavBarProps { username: string }
 export function NavBar({ username }: NavBarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const [version, setVersion] = useState('')
+
+  useEffect(() => {
+    fetch('/api/health').then(r => r.json()).then(d => setVersion(d.version ?? '')).catch(() => {})
+  }, [])
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -21,9 +27,12 @@ export function NavBar({ username }: NavBarProps) {
     }`
 
   return (
-    <nav className="border-b bg-white px-6 py-3 flex items-center justify-between">
+    <nav className="border-b bg-white px-6 py-3 flex items-center justify-between shrink-0">
       <div className="flex items-center gap-6">
-        <span className="font-semibold text-gray-900">企业知识库</span>
+        <div className="flex items-baseline gap-1.5">
+          <span className="font-semibold text-gray-900">企业知识库</span>
+          {version && <span className="text-[10px] text-gray-400">v{version}</span>}
+        </div>
         <Link href="/demo" className={linkClass('/demo')}>Feature Demo</Link>
         <Link href="/chat" className={linkClass('/chat')}>我的知识库</Link>
       </div>

@@ -15,21 +15,18 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
   const headers = new Headers(req.headers)
   headers.set('x-user-id', session.user_id)
   headers.delete('host')
+  headers.delete('expect') // undici (Node.js fetch) doesn't support Expect: 100-continue
 
   const body = req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined
 
-  const agentRes = await fetch(agentUrl, {
-    method: req.method,
-    headers,
-    body,
-    // @ts-expect-error duplex is not in the standard RequestInit type but needed for streaming
-    duplex: 'half',
-  })
-
-  return new NextResponse(agentRes.body, {
-    status: agentRes.status,
-    headers: agentRes.headers,
-  })
+  try {
+    // @ts-expect-error duplex is required for streaming request bodies in Node.js fetch
+    const agentRes = await fetch(agentUrl, { method: req.method, headers, body, duplex: 'half' })
+    return new NextResponse(agentRes.body, { status: agentRes.status, headers: agentRes.headers })
+  } catch (err) {
+    console.error('[proxy] fetch error:', err)
+    return NextResponse.json({ error: 'Proxy error' }, { status: 500 })
+  }
 }
 
 export const GET = proxy
