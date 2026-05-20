@@ -1,0 +1,13 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "企业知识库" [level=1] [ref=e4]
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: 用户名
+        - textbox "请输入用户名" [ref=e8]
+      - generic [ref=e9]:
+        - generic [ref=e10]: 密码
+        - textbox "请输入密码" [ref=e11]
+      - button "登录" [ref=e12] [cursor=pointer]
+    - paragraph [ref=e13]: v0.1.0
+  - alert [ref=e14]

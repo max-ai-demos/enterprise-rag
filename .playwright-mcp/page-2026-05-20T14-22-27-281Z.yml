@@ -1,0 +1,30 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - generic [ref=e6]: 企业知识库
+          - generic [ref=e7]: v0.1.1
+        - link "Feature Demo" [ref=e8] [cursor=pointer]:
+          - /url: /demo
+        - link "我的知识库" [ref=e9] [cursor=pointer]:
+          - /url: /chat
+      - generic [ref=e10]:
+        - generic [ref=e11]: demo1
+        - button "退出" [ref=e12] [cursor=pointer]
+    - main [ref=e13]:
+      - generic [ref=e14]:
+        - generic [ref=e16]:
+          - generic [ref=e18]: 暂无文档
+          - paragraph [ref=e21]: 暂无演示文档
+        - generic [ref=e24]:
+          - generic [ref=e25]:
+            - generic [ref=e27]: Feature Demo
+            - button "＋ 新对话" [ref=e28] [cursor=pointer]:
+              - generic [ref=e29]: ＋
+              - text: 新对话
+          - paragraph [ref=e32]: 提问即可开始对话
+          - generic [ref=e34]:
+            - textbox "输入问题，按 Enter 发送..." [ref=e35]
+            - button "发送" [disabled] [ref=e36]
+  - alert [ref=e37]

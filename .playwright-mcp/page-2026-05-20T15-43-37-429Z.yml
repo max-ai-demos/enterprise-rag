@@ -1,0 +1,97 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - generic [ref=e6]: 企业知识库
+          - generic [ref=e37]: v0.1.1
+        - link "Feature Demo" [ref=e7] [cursor=pointer]:
+          - /url: /demo
+        - link "我的知识库" [ref=e8] [cursor=pointer]:
+          - /url: /chat
+      - generic [ref=e9]:
+        - generic [ref=e10]: demo1
+        - button "退出" [ref=e11] [cursor=pointer]
+    - main [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e15]:
+          - generic [ref=e16]:
+            - button "📄 source.pdf" [ref=e38] [cursor=pointer]:
+              - generic [ref=e39]: 📄
+              - generic [ref=e40]: source.pdf
+            - button "📝 source.docx" [ref=e41] [cursor=pointer]:
+              - generic [ref=e42]: 📝
+              - generic [ref=e43]: source.docx
+          - generic [ref=e352]:
+            - paragraph [ref=e353]: 下面是图片
+            - paragraph [ref=e354]:
+              - img "source" [ref=e355]
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - generic [ref=e26]: Feature Demo
+            - button "＋ 新对话" [ref=e27] [cursor=pointer]:
+              - generic [ref=e28]: ＋
+              - text: 新对话
+          - generic [ref=e29]:
+            - paragraph [ref=e256]: What is monetary policy and how does the central bank control interest rates?
+            - generic [ref=e258]:
+              - paragraph [ref=e265]: Monetary policy refers to the process by which a central bank, such as the Federal Reserve, manages the supply of money and interest rates in an economy. The central bank uses various tools to influence economic activity, primarily by controlling nominal interest rates. By adjusting these rates, the central bank can influence inflation and employment levels. For instance, lowering interest rates can stimulate economic activity by making borrowing cheaper, while raising rates can help control inflation by making borrowing more expensive. [来源1]
+              - generic [ref=e266]:
+                - button "📎 source.pdf 第32页 →" [ref=e267] [cursor=pointer]:
+                  - generic [ref=e268]: 📎
+                  - generic [ref=e269]: source.pdf
+                  - generic [ref=e270]: 第32页
+                  - generic [ref=e271]: →
+                - button "📎 source.pdf 第43页 →" [ref=e272] [cursor=pointer]:
+                  - generic [ref=e273]: 📎
+                  - generic [ref=e274]: source.pdf
+                  - generic [ref=e275]: 第43页
+                  - generic [ref=e276]: →
+                - button "📎 source.pdf 第43页 →" [ref=e277] [cursor=pointer]:
+                  - generic [ref=e278]: 📎
+                  - generic [ref=e279]: source.pdf
+                  - generic [ref=e280]: 第43页
+                  - generic [ref=e281]: →
+                - button "📎 source.pdf 第44页 →" [ref=e282] [cursor=pointer]:
+                  - generic [ref=e283]: 📎
+                  - generic [ref=e284]: source.pdf
+                  - generic [ref=e285]: 第44页
+                  - generic [ref=e286]: →
+                - button "📎 source.pdf 第4页 →" [ref=e287] [cursor=pointer]:
+                  - generic [ref=e288]: 📎
+                  - generic [ref=e289]: source.pdf
+                  - generic [ref=e290]: 第4页
+                  - generic [ref=e291]: →
+            - paragraph [ref=e358]: What is the difference between real and nominal interest rates?
+            - generic [ref=e360]:
+              - paragraph [ref=e367]: The difference between real and nominal interest rates lies in the adjustment for inflation. The nominal interest rate is the stated rate without any adjustments for inflation. In contrast, the real interest rate is the nominal rate adjusted for the effects of inflation, reflecting the true cost of borrowing and the true yield on savings. The real interest rate provides a more accurate measure of the purchasing power of interest earnings or payments. [来源2][来源3][来源4][来源5]
+              - generic [ref=e368]:
+                - button "📎 source.pdf 第2页 →" [ref=e369] [cursor=pointer]:
+                  - generic [ref=e370]: 📎
+                  - generic [ref=e371]: source.pdf
+                  - generic [ref=e372]: 第2页
+                  - generic [ref=e373]: →
+                - button "📎 source.pdf 第6页 →" [ref=e374] [cursor=pointer]:
+                  - generic [ref=e375]: 📎
+                  - generic [ref=e376]: source.pdf
+                  - generic [ref=e377]: 第6页
+                  - generic [ref=e378]: →
+                - button "📎 source.pdf 第5页 →" [ref=e379] [cursor=pointer]:
+                  - generic [ref=e380]: 📎
+                  - generic [ref=e381]: source.pdf
+                  - generic [ref=e382]: 第5页
+                  - generic [ref=e383]: →
+                - button "📎 source.pdf 第51页 →" [ref=e384] [cursor=pointer]:
+                  - generic [ref=e385]: 📎
+                  - generic [ref=e386]: source.pdf
+                  - generic [ref=e387]: 第51页
+                  - generic [ref=e388]: →
+                - button "📎 source.pdf 第33页 →" [ref=e389] [cursor=pointer]:
+                  - generic [ref=e390]: 📎
+                  - generic [ref=e391]: source.pdf
+                  - generic [ref=e392]: 第33页
+                  - generic [ref=e393]: →
+          - generic [ref=e33]:
+            - textbox "输入问题，按 Enter 发送..." [ref=e34]
+            - button "发送" [disabled] [ref=e35]
+  - alert [ref=e36]

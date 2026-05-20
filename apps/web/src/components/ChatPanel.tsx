@@ -33,12 +33,15 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
   const [showSidebar, setShowSidebar] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const activeSessionRef = useRef<string | null>(sessionId)
+  // Prevent loadHistory from overwriting in-flight streaming messages
+  const streamingRef = useRef(false)
 
   useEffect(() => {
     activeSessionRef.current = sessionId
     setActiveSessionId(sessionId)
-    if (sessionId) loadHistory(sessionId)
-    else setMessages([])
+    // Don't clobber in-flight streaming messages when a new session is being created
+    if (sessionId && !streamingRef.current) loadHistory(sessionId)
+    else if (!sessionId) setMessages([])
   }, [sessionId])
 
   useEffect(() => {
@@ -85,8 +88,12 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
     setInput('')
     setLoading(true)
 
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: query }
-    setMessages(prev => [...prev, userMsg])
+    const userMsg: Message = { id: `user-${Date.now()}`, role: 'user', content: query }
+    const assistantId = `asst-${Date.now()}`
+    const placeholder: Message = { id: assistantId, role: 'assistant', content: '', sources: [] }
+
+    setMessages(prev => [...prev, userMsg, placeholder])
+    streamingRef.current = true
 
     try {
       // Use streaming endpoint
@@ -105,16 +112,13 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
       const reader = streamRes.body!.getReader()
       const decoder = new TextDecoder()
 
-      // Add placeholder assistant message
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant' as const, content: '', sources: [] }])
-
       let buffer = ''
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''  // keep incomplete line
+        buffer = lines.pop() ?? ''
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
           try {
@@ -126,38 +130,21 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
                 onSessionCreated?.(event.session_id)
                 loadSessions()
               }
-              setMessages(prev => {
-                const msgs = [...prev]
-                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], sources: event.sources ?? [] }
-                return msgs
-              })
+              setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, sources: event.sources ?? [] } : m))
             }
             if (event.type === 'delta') {
-              setMessages(prev => {
-                const msgs = [...prev]
-                const last = msgs[msgs.length - 1]
-                msgs[msgs.length - 1] = { ...last, content: last.content + (event.content ?? '') }
-                return msgs
-              })
+              setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + (event.content ?? '') } : m))
             }
             if (event.type === 'error') {
-              setMessages(prev => {
-                const msgs = [...prev]
-                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: event.message ?? '出错了，请重试' }
-                return msgs
-              })
+              setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: event.message ?? '出错了，请重试' } : m))
             }
           } catch { /* skip malformed SSE line */ }
         }
       }
     } catch {
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: '请求失败，请重试',
-        sources: [],
-      }])
+      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: '请求失败，请重试' } : m))
     } finally {
+      streamingRef.current = false
       setLoading(false)
     }
   }

@@ -1,0 +1,171 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - generic [ref=e6]: 企业知识库
+          - generic [ref=e37]: v0.1.1
+        - link "Feature Demo" [ref=e7] [cursor=pointer]:
+          - /url: /demo
+        - link "我的知识库" [ref=e8] [cursor=pointer]:
+          - /url: /chat
+      - generic [ref=e9]:
+        - generic [ref=e10]: demo1
+        - button "退出" [ref=e11] [cursor=pointer]
+    - main [ref=e12]:
+      - generic [ref=e394]:
+        - generic [ref=e396]:
+          - generic [ref=e397]:
+            - button "📄 source.pdf" [ref=e398] [cursor=pointer]:
+              - generic [ref=e399]: 📄
+              - generic [ref=e400]: source.pdf
+            - button "📝 source.docx" [ref=e401] [cursor=pointer]:
+              - generic [ref=e402]: 📝
+              - generic [ref=e403]: source.docx
+          - generic [ref=e406]:
+            - generic [ref=e408]:
+              - generic [ref=e409]:
+                - button "Toggle thumbnails" [ref=e411] [cursor=pointer]:
+                  - img [ref=e412]
+                - button "Toggle search" [ref=e420] [cursor=pointer]:
+                  - img [ref=e421]
+                - button "Switch to dark theme" [ref=e424] [cursor=pointer]:
+                  - img [ref=e425]
+              - generic [ref=e428]:
+                - generic [ref=e429]:
+                  - textbox [ref=e430]: "1"
+                  - generic [ref=e431]: /
+                  - generic [ref=e432]: "51"
+                - button "Page fit" [ref=e435] [cursor=pointer]:
+                  - generic [ref=e436]: Page fit
+                  - img [ref=e437]
+              - generic [ref=e439]:
+                - button "Rotate clockwise" [ref=e441] [cursor=pointer]:
+                  - img [ref=e443]
+                - button "Full screen" [ref=e447] [cursor=pointer]:
+                  - img [ref=e448]
+                - button "Download" [ref=e451] [cursor=pointer]:
+                  - img [ref=e452]
+            - generic [ref=e454]:
+              - generic:
+                - generic:
+                  - generic:
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+                    - button
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - img
+                    - textbox:
+                      - /placeholder: Search in document
+              - generic [ref=e458]:
+                - generic [ref=e461]:
+                  - generic [ref=e462]: "H I ! I am Gabe Chodorow-Reich, your instructor for the remainder of the course. Harvard ’05 (Social Studies, Adams House), 1011B ’03. What sort of research do I do? ▶ https://scholar.harvard.edu/chodorow-reich/publications . ▶ https://www.nytimes.com/2024/03/04/us/politics/ trump-corporate-tax-cut.html . I want to meet you! ▶ O.H. Thursday 1:30-2:30pm in Littauer 207. ▶ Lunches Thursday at 12pm via https://c2t.fas.harvard.edu/ or at House/Annenberg: sign up link."
+                  - generic:
+                    - link [ref=e464] [cursor=pointer]:
+                      - /url: https://scholar.harvard.edu/chodorow-reich/publications
+                    - link [ref=e466] [cursor=pointer]:
+                      - /url: https://www.nytimes.com/2024/03/04/us/politics/trump-corporate-tax-cut.html
+                    - link [ref=e468] [cursor=pointer]:
+                      - /url: https://www.nytimes.com/2024/03/04/us/politics/trump-corporate-tax-cut.html
+                    - link [ref=e470] [cursor=pointer]:
+                      - /url: https://c2t.fas.harvard.edu/
+                    - link [ref=e472] [cursor=pointer]:
+                      - /url: https://docs.google.com/spreadsheets/d/1SCAqKzaQgK1Cr1oc4ZYeNLkM_GBJJGRIlnYMSckKIwg/edit?usp=sharing
+                - generic [ref=e478]: "W HERE WE ARE IN THE COURSE 1 First half: centered around growth models, long-run outcomes. ▶ Real models: no money, flexible prices. 2 Next lectures: short-run outcomes and stabilization policy. ▶ Distinguish real and nominal interest rates and add sticky prices. 3 Big policy questions: ▶ What does the central bank do? ▶ Why do governments increase spending in recessions? ▶ What explains the recent rise and fall in inflation?"
+                - generic [ref=e484]: N EXT BLOCK OF LECTURES 1 Monetary policy 2 Housing day 3 IS-MP 4 New Keynesian and ZLB 5 Inflation
+                - generic [ref=e490]: M ONETARY P OLICY Harvard Economics 1011B Professor Gabriel Chodorow-Reich Spring 2024
+                - generic [ref=e495]:
+                  - generic [ref=e496]: O UTLINE 1 M ONEY 2 R EAL AND NOMINAL INTEREST RATE 3 M ONETARY POLICY 4 T ERM STRUCTURE OF INTEREST RATES
+                  - generic:
+                    - link [ref=e498] [cursor=pointer]:
+                      - /url: "#"
+                    - link [ref=e500] [cursor=pointer]:
+                      - /url: "#"
+                    - link [ref=e502] [cursor=pointer]:
+                      - /url: "#"
+                    - link [ref=e504] [cursor=pointer]:
+                      - /url: "#"
+                - generic [ref=e509]:
+                  - generic [ref=e510]: O UTLINE 1 M ONEY 2 R EAL AND NOMINAL INTEREST RATE 3 M ONETARY POLICY 4 T ERM STRUCTURE OF INTEREST RATES
+                  - generic:
+                    - link [ref=e512] [cursor=pointer]:
+                      - /url: "#"
+                    - link [ref=e514] [cursor=pointer]:
+                      - /url: "#"
+                    - link [ref=e516] [cursor=pointer]:
+                      - /url: "#"
+                    - link [ref=e518] [cursor=pointer]:
+                      - /url: "#"
+                - generic [ref=e524]: "C HARACTERISTICS OF MONEY 1 Unit of account : costs $ 1, costs $ 2,... Then 2 = 1 . N goods characterized by N prices. Without unit of account, N goods requires N ( N + 1) / 2 relative prices. ▶ Refer to as numeraire . 2 Medium of exchange : Trade for dollars, dollars for . Solves “double coincidence of wants” in barter economy. 3 Store of value : Perfectly safe at short horizons. 4 Fiscal backing : Can it be used to pay taxes? 5 Non-interest bearing : Does holding it accrue interest? 1 / 25"
+                - generic [ref=e528]:
+                  - generic:
+                    - generic: "M ONEY ? Instrument Unit of account Medium of exchange Store of value Fiscal backing Interest bearing Currency ✓ ✓ ✓ ✓ X Checking deposits ✓ ✓ ✓ ✓ X Time deposits ✓ X ✓ X ✓ AAA rated security X X ✓ X ✓ Grocery store credit X ✓ X X X Bitcoin ✓ ✓ (limited) X X X Currency issuance directly controlled by government (inside money). AAA security, grocery store credit created by private agents (outside money). Fiscal backing ⇒ unit of account, medium of exchange. Non-interest bearing, safe store of value for historical technological reasons. More: https://mitpress.mit.edu/9780262533270/ money-payments-and-liquidity/ . 2 / 25"
+                    - generic:
+                      - generic:
+                        - link:
+                          - /url: https://mitpress.mit.edu/9780262533270/money-payments-and-liquidity/
+                      - generic:
+                        - link:
+                          - /url: https://mitpress.mit.edu/9780262533270/money-payments-and-liquidity/
+        - generic [ref=e617]:
+          - generic [ref=e618]:
+            - generic [ref=e620]: Feature Demo
+            - button "＋ 新对话" [ref=e621] [cursor=pointer]:
+              - generic [ref=e622]: ＋
+              - text: 新对话
+          - paragraph [ref=e625]: 提问即可开始对话
+          - generic [ref=e627]:
+            - textbox "输入问题，按 Enter 发送..." [active] [ref=e628]
+            - button "发送" [disabled] [ref=e629]
+  - alert [ref=e36]

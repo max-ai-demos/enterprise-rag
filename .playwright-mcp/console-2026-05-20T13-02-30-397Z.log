@@ -1,0 +1,2 @@
+[     310ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3001/login:0
+[   52572ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3001/api/agent/chat/stream:0

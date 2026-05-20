@@ -1,0 +1,2 @@
+[  353333ms] [LOG] Warning: fetchStandardFontData: failed to fetch file "FoxitSymbol.pfb" with "UnknownErrorException: Ensure that the `standardFontDataUrl` API parameter is provided.". @ https://cdn.eu.xxx.ai/frontend/pdfjs/pdf.worker.min.js:20
+[  905764ms] [LOG] Warning: fetchStandardFontData: failed to fetch file "FoxitSymbol.pfb" with "UnknownErrorException: Ensure that the `standardFontDataUrl` API parameter is provided.". @ https://cdn.eu.xxx.ai/frontend/pdfjs/pdf.worker.min.js:20
