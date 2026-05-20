@@ -94,6 +94,9 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [summaryText, setSummaryText] = useState<string | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [showSummary, setShowSummary] = useState(false)
 
   useEffect(() => {
     if (!selectedId && docs.length > 0) {
@@ -105,6 +108,11 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
   useEffect(() => {
     if (activeDocId) setSelectedId(activeDocId)
   }, [activeDocId])
+
+  useEffect(() => {
+    setSummaryText(null)
+    setShowSummary(false)
+  }, [selectedId])
 
   const selectedDoc = docs.find(d => d.document_id === selectedId) ?? null
   const activeJump = jumpLocation?.document_id === selectedId ? jumpLocation : null
@@ -153,6 +161,25 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
 
   const handleDragLeave = useCallback(() => setDragOver(false), [])
 
+  async function fetchSummary() {
+    if (!selectedDoc) return
+    setShowSummary(true)
+    if (summaryText) return  // already loaded for this doc
+    setSummaryLoading(true)
+    try {
+      const res = await fetch(`/api/agent/documents/${selectedDoc.document_id}/summary`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (res.ok) setSummaryText(data.summary)
+      else setSummaryText('生成摘要失败，请重试。')
+    } catch {
+      setSummaryText('网络错误，请重试。')
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
+
   return (
     <div
       className={`flex flex-col h-full border-r bg-white relative ${dragOver ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
@@ -197,9 +224,16 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
               onChange={handleFileInput}
             />
             <button
+              onClick={fetchSummary}
+              disabled={!selectedDoc || selectedDoc.status !== 'ready'}
+              className="ml-auto px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded whitespace-nowrap disabled:opacity-40 shrink-0"
+            >
+              总结
+            </button>
+            <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadProgress !== null}
-              className="ml-auto px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded whitespace-nowrap disabled:opacity-50 shrink-0"
+              className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded whitespace-nowrap disabled:opacity-50 shrink-0"
             >
               {uploadProgress !== null ? `上传中 ${uploadProgress}%` : '+ 上传'}
             </button>
@@ -214,6 +248,23 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
             className="h-1 bg-blue-500 transition-all duration-200"
             style={{ width: `${uploadProgress}%` }}
           />
+        </div>
+      )}
+
+      {showSummary && (
+        <div className="border-b bg-purple-50 px-4 py-3 shrink-0 max-h-48 overflow-y-auto relative">
+          <button
+            onClick={() => setShowSummary(false)}
+            className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-xs"
+          >
+            ✕
+          </button>
+          <p className="text-xs font-semibold text-purple-700 mb-1">文档摘要</p>
+          {summaryLoading ? (
+            <p className="text-xs text-gray-500">生成中，请稍候…</p>
+          ) : (
+            <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{summaryText}</p>
+          )}
         </div>
       )}
 

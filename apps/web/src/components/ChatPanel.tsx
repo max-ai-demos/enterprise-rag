@@ -89,31 +89,67 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
     setMessages(prev => [...prev, userMsg])
 
     try {
-      const res = await fetch('/api/agent/chat/message', {
+      // Use streaming endpoint
+      const streamRes = await fetch('/api/agent/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query,
           user_id: userId,
-          session_id: activeSessionRef.current,
+          session_id: activeSessionRef.current ?? undefined,
           mode,
         }),
       })
-      const data = await res.json()
+      if (!streamRes.ok) throw new Error('Stream request failed')
 
-      if (data.session_id && !activeSessionRef.current) {
-        activeSessionRef.current = data.session_id
-        setActiveSessionId(data.session_id)
-        onSessionCreated?.(data.session_id)
-        loadSessions()
+      const reader = streamRes.body!.getReader()
+      const decoder = new TextDecoder()
+
+      // Add placeholder assistant message
+      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant' as const, content: '', sources: [] }])
+
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''  // keep incomplete line
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const event = JSON.parse(line.slice(6)) as { type: string; session_id?: string; sources?: Source[]; content?: string; message?: string }
+            if (event.type === 'sources') {
+              if (!activeSessionRef.current && event.session_id) {
+                activeSessionRef.current = event.session_id
+                setActiveSessionId(event.session_id)
+                onSessionCreated?.(event.session_id)
+                loadSessions()
+              }
+              setMessages(prev => {
+                const msgs = [...prev]
+                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], sources: event.sources ?? [] }
+                return msgs
+              })
+            }
+            if (event.type === 'delta') {
+              setMessages(prev => {
+                const msgs = [...prev]
+                const last = msgs[msgs.length - 1]
+                msgs[msgs.length - 1] = { ...last, content: last.content + (event.content ?? '') }
+                return msgs
+              })
+            }
+            if (event.type === 'error') {
+              setMessages(prev => {
+                const msgs = [...prev]
+                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: event.message ?? '出错了，请重试' }
+                return msgs
+              })
+            }
+          } catch { /* skip malformed SSE line */ }
+        }
       }
-
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.answer ?? '出错了，请重试',
-        sources: data.sources ?? [],
-      }])
     } catch {
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
