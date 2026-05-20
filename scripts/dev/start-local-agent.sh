@@ -10,12 +10,15 @@ if [ ! -x "apps/agent/.venv/bin/python" ]; then
   exit 1
 fi
 
-# Read OpenAI key from Mac keychain
+# Read OpenAI key: try keychain first, fall back to apps/agent/.env (pydantic-settings reads it automatically)
 if [ -z "${OPENAI_API_KEY:-}" ]; then
   OPENAI_API_KEY=$(security find-generic-password -s "openai" -a "OPENAI_API_KEY" -w 2>/dev/null || true)
 fi
+if [ -z "${OPENAI_API_KEY:-}" ] && [ -f "apps/agent/.env" ]; then
+  OPENAI_API_KEY=$(grep -E '^OPENAI_API_KEY=' apps/agent/.env | cut -d= -f2- | tr -d '"'"'" | head -1 || true)
+fi
 if [ -z "${OPENAI_API_KEY:-}" ]; then
-  echo "❌ OPENAI_API_KEY 未设置且未在钥匙串找到"
+  echo "❌ OPENAI_API_KEY 未设置 — 请在钥匙串或 apps/agent/.env 中配置"
   exit 1
 fi
 export OPENAI_API_KEY
