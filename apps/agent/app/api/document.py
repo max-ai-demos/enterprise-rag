@@ -108,6 +108,53 @@ def list_demo_documents(db: Session = Depends(get_db)):
     ]
 
 
+@router.post("/{document_id}/summary")
+def generate_summary(document_id: str, db: Session = Depends(get_db)):
+    """Generate (or return cached) document summary."""
+    from app.rag.summarizer import get_document_full_text, summarize_document
+    from app.infrastructure.config import settings as cfg
+
+    repo = DocumentRepository(db)
+    doc = repo.get_by_id(document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    # Return cached summary if already generated
+    if doc.summary_status == "ready" and doc.summary:
+        return {"document_id": document_id, "summary": doc.summary, "cached": True}
+
+    full_path = cfg.resolved_upload_dir().parent / doc.file_path
+    if not full_path.exists():
+        raise HTTPException(404, "File not found on disk")
+
+    repo.update_summary_status(document_id, "pending")
+    try:
+        full_text = get_document_full_text(str(full_path), doc.file_type)
+        summary = summarize_document(full_text)
+        repo.update_summary(document_id, summary)
+        return {"document_id": document_id, "summary": summary, "cached": False}
+    except Exception as e:
+        repo.update_summary_status(document_id, "failed")
+        logger.error(f"Summarization failed for {document_id}: {e}")
+        raise HTTPException(500, f"Summarization failed: {e}")
+
+
+@router.get("/{document_id}/summary")
+def get_summary(document_id: str, db: Session = Depends(get_db)):
+    """Get cached summary. Returns 404 if not yet generated."""
+    repo = DocumentRepository(db)
+    doc = repo.get_by_id(document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if not doc.summary:
+        raise HTTPException(404, "No summary available. POST /documents/{id}/summary to generate.")
+    return {
+        "document_id": document_id,
+        "summary": doc.summary,
+        "summary_status": doc.summary_status,
+    }
+
+
 @router.delete("/{document_id}")
 def delete_document(document_id: str, user_id: str, db: Session = Depends(get_db)):
     repo = DocumentRepository(db)
