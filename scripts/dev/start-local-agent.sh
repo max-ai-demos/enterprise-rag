@@ -29,8 +29,10 @@ if [ -z "${MEM0_API_KEY:-}" ]; then
 fi
 export MEM0_API_KEY
 
-# Unset HTTP proxies so OpenAI API calls go direct (proxy would intercept and break them)
-unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
+# Unset ALL_PROXY/all_proxy (SOCKS5 proxies break httpx if socksio isn't installed).
+# Keep HTTP_PROXY/HTTPS_PROXY — they point to a local HTTP CONNECT proxy that OpenAI
+# calls must go through because direct TCP to api.openai.com is blocked on this machine.
+unset ALL_PROXY all_proxy
 
 find_free_port() {
   for p in 8001 8002 8003 8004 8005; do
