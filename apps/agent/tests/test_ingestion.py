@@ -50,3 +50,32 @@ def test_parse_docx_returns_chunks(tmp_path):
     chunks = parse_document(str(docx_path), "docx")
     assert len(chunks) > 0
     assert all("paragraph_idx" in c for c in chunks)
+
+
+def test_chunk_size_is_1500():
+    from app.rag.ingestion import CHUNK_SIZE
+    assert CHUNK_SIZE == 1500, f"Expected 1500, got {CHUNK_SIZE}"
+
+
+def test_parse_docx_includes_tables(tmp_path):
+    """DOCX parsing should extract table rows as chunks."""
+    from docx import Document as DocxDocument
+
+    # Build a minimal DOCX with one paragraph and one table
+    doc = DocxDocument()
+    doc.add_paragraph("这是正文段落。")
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "产品名称"
+    table.cell(0, 1).text = "单价"
+    table.cell(1, 0).text = "笔记本电脑"
+    table.cell(1, 1).text = "8000元"
+    docx_path = tmp_path / "test.docx"
+    doc.save(str(docx_path))
+
+    from app.rag.ingestion import parse_document
+    chunks = parse_document(str(docx_path), "docx")
+
+    texts = [c["text"] for c in chunks]
+    assert any("这是正文段落" in t for t in texts)
+    assert any("产品名称" in t and "单价" in t for t in texts)
+    assert any("笔记本电脑" in t and "8000元" in t for t in texts)

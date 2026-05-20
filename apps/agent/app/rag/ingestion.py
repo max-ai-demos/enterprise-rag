@@ -10,8 +10,37 @@ from app.infrastructure.config import settings
 
 logger = logging.getLogger(__name__)
 
-CHUNK_SIZE = 512
-CHUNK_OVERLAP = 64
+CHUNK_SIZE = 1500
+CHUNK_OVERLAP = 150
+
+_WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _parse_docx_blocks(file_path: str) -> list[dict]:
+    """Extract paragraphs and table rows from DOCX in document order."""
+    from docx import Document as DocxDocument
+    from docx.table import Table as DocxTable
+
+    doc = DocxDocument(file_path)
+    blocks = []
+    idx = 0
+
+    for child in doc.element.body:
+        tag = child.tag
+        if tag == f"{_WORD_NS}p":
+            text = "".join(child.itertext()).strip()
+            if text:
+                blocks.append({"text": text, "block_idx": idx, "is_table": False})
+                idx += 1
+        elif tag == f"{_WORD_NS}tbl":
+            tbl = DocxTable(child, doc)
+            for row in tbl.rows:
+                cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                if cells:
+                    row_text = " | ".join(cells)
+                    blocks.append({"text": row_text, "block_idx": idx, "is_table": True})
+                    idx += 1
+    return blocks
 
 
 def _setup_llama_settings():
@@ -66,19 +95,14 @@ def parse_document(file_path: str, file_type: str) -> list[dict[str, Any]]:
                         chunk_index += 1
 
     elif file_type == "docx":
-        from docx import Document as DocxDocument
-        doc = DocxDocument(file_path)
         splitter = SentenceSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
         chunk_index = 0
-        for para_idx, para in enumerate(doc.paragraphs):
-            text = para.text.strip()
-            if not text:
-                continue
-            for sub in splitter.split_text(text):
+        for block in _parse_docx_blocks(file_path):
+            for sub in splitter.split_text(block["text"]):
                 if sub.strip():
                     chunks.append({
                         "text": sub.strip(),
-                        "paragraph_idx": para_idx,
+                        "paragraph_idx": block["block_idx"],
                         "chunk_index": chunk_index,
                     })
                     chunk_index += 1
