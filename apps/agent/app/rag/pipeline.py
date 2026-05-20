@@ -53,8 +53,9 @@ def _retrieve_across_documents(
 
 
 def _build_sources(reranked: list[dict]) -> list[dict]:
-    """Extract source metadata from reranked chunks."""
+    """Extract source metadata from reranked chunks, deduplicating by location."""
     sources = []
+    seen: set[str] = set()
     for chunk in reranked:
         meta = chunk["metadata"]
         source = {
@@ -78,7 +79,11 @@ def _build_sources(reranked: list[dict]) -> list[dict]:
         if meta.get("sheet_name"):
             source["sheet_name"] = meta["sheet_name"]
             source["row_start"] = int(meta.get("row_start", 1))
-        sources.append(source)
+        # Deduplicate by document + location key
+        loc_key = f"{source['document_id']}:{source.get('page_num', source.get('paragraph_idx', source.get('row_start', '')))}"
+        if loc_key not in seen:
+            seen.add(loc_key)
+            sources.append(source)
     return sources
 
 
