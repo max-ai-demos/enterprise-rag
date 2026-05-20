@@ -29,6 +29,9 @@ if [ -z "${MEM0_API_KEY:-}" ]; then
 fi
 export MEM0_API_KEY
 
+# Unset HTTP proxies so OpenAI API calls go direct (proxy would intercept and break them)
+unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
+
 find_free_port() {
   for p in 8001 8002 8003 8004 8005; do
     if ! lsof -nP -iTCP:"${p}" -sTCP:LISTEN >/dev/null 2>&1; then echo "${p}"; return 0; fi
