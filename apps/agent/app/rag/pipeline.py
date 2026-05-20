@@ -29,7 +29,8 @@ def _get_collection_for_document(document_id: str):
     name = f"doc_{document_id.replace('-', '_')}"
     try:
         return client.get_collection(name)
-    except Exception:
+    except Exception as e:
+        logger.debug("Collection not found for %s: %s", document_id, e)
         return None
 
 
@@ -71,8 +72,8 @@ def _build_sources(reranked: list[dict]) -> list[dict]:
             if bbox_raw:
                 try:
                     source["bbox"] = json.loads(bbox_raw)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Could not parse bbox %r: %s", bbox_raw, e)
         if meta.get("paragraph_idx") is not None:
             source["paragraph_idx"] = int(meta["paragraph_idx"])
         if meta.get("sheet_name"):

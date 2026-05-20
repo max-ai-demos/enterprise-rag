@@ -1,7 +1,7 @@
 # apps/agent/app/api/chat.py
 import json
 import logging
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -62,14 +62,18 @@ def chat_message(req: ChatRequest, db: Session = Depends(get_db)):
     sess_repo.update_title(session_id, req.query)
 
     # Run RAG pipeline
-    result = rag_answer(
-        query=req.query,
-        user_id=req.user_id,
-        session_id=session_id,
-        document_ids=doc_ids,
-        history=history,
-        document_metadata=doc_meta,
-    )
+    try:
+        result = rag_answer(
+            query=req.query,
+            user_id=req.user_id,
+            session_id=session_id,
+            document_ids=doc_ids,
+            history=history,
+            document_metadata=doc_meta,
+        )
+    except Exception as e:
+        logger.error("RAG pipeline failed: %s", e)
+        raise HTTPException(500, "AI 服务暂时不可用，请稍后重试。")
 
     # Persist assistant message
     msg_repo.create(

@@ -76,3 +76,23 @@ def test_rag_answer_stream_no_docs():
 
     assert len(events) == 1
     assert events[0]["type"] == "error"
+
+
+def test_rag_answer_stream_low_confidence():
+    """Low confidence rerank should yield error event."""
+    fake_chunks = [{"id": "doc1_0", "text": "text", "score": 0.1, "metadata": {"document_id": "doc1"}}]
+
+    with patch("app.rag.pipeline._retrieve_across_documents", return_value=fake_chunks), \
+         patch("app.rag.pipeline.rewrite_query", return_value="q"), \
+         patch("app.rag.pipeline.get_memories", return_value=[]), \
+         patch("app.rag.pipeline.rerank", return_value=fake_chunks), \
+         patch("app.rag.pipeline.is_confident", return_value=False):
+
+        from app.rag.pipeline import rag_answer_stream
+        events = list(rag_answer_stream(
+            query="q", user_id="u1", session_id="s1",
+            document_ids=["doc1"], history=[], document_metadata={},
+        ))
+
+    assert len(events) == 1
+    assert events[0]["type"] == "error"
