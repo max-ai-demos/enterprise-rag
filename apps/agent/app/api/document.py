@@ -17,11 +17,11 @@ def _ext_to_type(filename: str) -> str:
     return filename.rsplit(".", 1)[-1].lower()
 
 
-def _run_ingestion(doc_id: str, file_path: str, file_type: str, db_path: str):
+def _run_ingestion(doc_id: str, file_path: str, file_type: str, database_url: str):
     """Background ingestion task — opens its own DB session."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    engine = create_engine(database_url, pool_pre_ping=True)
     Session = sessionmaker(bind=engine)
     with Session() as session:
         repo = DocumentRepository(session)
@@ -68,7 +68,7 @@ async def upload_document(
         doc.id,
         str(settings.resolved_upload_dir().parent / file_path),
         file_type,
-        str(settings.resolved_database_path()),
+        settings.database_url,
     )
 
     return {"document_id": doc.id, "filename": doc.filename, "status": "processing"}

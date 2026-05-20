@@ -1,12 +1,10 @@
 // apps/web/next.config.mjs
-import { createRequire } from 'module'
-const require = createRequire(import.meta.url)
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
   experimental: {
-    serverComponentsExternalPackages: ['better-sqlite3'],
+    serverComponentsExternalPackages: ['mysql2'],
     serverActions: { bodySizeLimit: '50mb' },
   },
   webpack: (config, { isServer }) => {

@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   if (!username || !password) {
     return NextResponse.json({ error: 'Missing credentials' }, { status: 400 })
   }
-  const user = getUserByUsername(username)
+  const user = await getUserByUsername(username)
   if (!user) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
   }

@@ -3,10 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.infrastructure.config import settings
 
-engine = create_engine(
-    f"sqlite:///{settings.resolved_database_path()}",
-    connect_args={"check_same_thread": False},
-)
+engine = create_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():

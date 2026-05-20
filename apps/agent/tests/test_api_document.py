@@ -1,28 +1,24 @@
 # apps/agent/tests/test_api_document.py
 import io
-import sqlite3
 import pytest
-from pathlib import Path
 from fastapi.testclient import TestClient
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
+    db_url = f"sqlite:///{tmp_path}/test.db"
+    monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
     monkeypatch.setenv("CHROMA_DIR", str(tmp_path / "chroma"))
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    # Initialize database
-    db = tmp_path / "test.db"
-    sql = (Path(__file__).parent.parent.parent.parent / "scripts" / "init.sql").read_text()
-    con = sqlite3.connect(db)
-    con.executescript(sql)
-    con.commit()
-    con.close()
-    # Import after env setup so settings loads correctly
     import importlib
     import app.infrastructure.config as config_mod
     importlib.reload(config_mod)
+    import app.db.database as db_mod
+    importlib.reload(db_mod)
+    from app.db.models import Base
+    from app.db.database import engine
+    Base.metadata.create_all(engine)
     from main import app
     return TestClient(app)
 

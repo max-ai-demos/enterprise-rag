@@ -1,10 +1,9 @@
-from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     openai_api_key: str
-    database_path: str = "../../data/enterprise_rag.db"
+    database_url: str = "mysql+pymysql://root:Lyx2020.@localhost:3306/enterprise_rag?charset=utf8mb4"
     upload_dir: str = "../../data/uploads"
     demo_dir: str = "../../data/demo"
     chroma_dir: str = "../../data/chroma_db"
@@ -14,15 +13,14 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    def resolved_database_path(self) -> Path:
-        return Path(self.database_path).resolve()
-
-    def resolved_upload_dir(self) -> Path:
+    def resolved_upload_dir(self):
+        from pathlib import Path
         p = Path(self.upload_dir).resolve()
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-    def resolved_chroma_dir(self) -> Path:
+    def resolved_chroma_dir(self):
+        from pathlib import Path
         p = Path(self.chroma_dir).resolve()
         p.mkdir(parents=True, exist_ok=True)
         return p

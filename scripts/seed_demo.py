@@ -3,7 +3,6 @@
 # Run: cd apps/agent && .venv/bin/python ../../scripts/seed_demo.py
 import sys
 import os
-import sqlite3
 import uuid
 from pathlib import Path
 
@@ -12,8 +11,9 @@ sys.path.insert(0, str(ROOT / "apps" / "agent"))
 os.chdir(ROOT / "apps" / "agent")  # pydantic-settings finds .env here
 
 from app.rag.ingestion import ingest_document
+from app.db.database import SessionLocal
+from app.db.repository import DocumentRepository
 
-DB_PATH = ROOT / "data" / "enterprise_rag.db"
 DEMO_DIR = ROOT / "data" / "demo"
 SUPPORTED = {"pdf", "docx", "xlsx", "txt"}
 
@@ -24,7 +24,8 @@ def main():
         print("Create data/demo/ and add PDF/DOCX/XLSX/TXT files.")
         return
 
-    con = sqlite3.connect(DB_PATH)
+    db = SessionLocal()
+    repo = DocumentRepository(db)
     try:
         files = sorted(
             f for f in DEMO_DIR.iterdir()
@@ -34,44 +35,39 @@ def main():
             print("No supported files in data/demo/")
             return
 
+        from app.db.models import Document
         for f in files:
             file_type = f.suffix[1:].lower()
             rel_path = f"demo/{f.name}"
 
-            row = con.execute(
-                "SELECT id, status FROM documents WHERE file_path = ?", (rel_path,)
-            ).fetchone()
+            existing = db.query(Document).filter(Document.file_path == rel_path).first()
 
-            if row and row[1] == "ready":
+            if existing and existing.status == "ready":
                 print(f"Skip (ready): {f.name}")
                 continue
 
-            if row:
-                doc_id = row[0]
+            if existing:
+                doc_id = existing.id
             else:
-                doc_id = str(uuid.uuid4())
-                con.execute(
-                    "INSERT INTO documents (id, user_id, filename, file_path, file_type, status, is_demo) "
-                    "VALUES (?, NULL, ?, ?, ?, 'pending', 1)",
-                    (doc_id, f.name, rel_path, file_type),
+                doc = repo.create(
+                    user_id=None,
+                    filename=f.name,
+                    file_path=rel_path,
+                    file_type=file_type,
+                    is_demo=True,
                 )
-                con.commit()
+                doc_id = doc.id
                 print(f"Registered: {f.name}")
 
             try:
                 count = ingest_document(doc_id, str(f), file_type)
-                con.execute(
-                    "UPDATE documents SET status='ready', chunk_count=? WHERE id=?",
-                    (count, doc_id),
-                )
-                con.commit()
+                repo.update_status(doc_id, "ready", count)
                 print(f"  ✓ {f.name} → {count} chunks")
             except Exception as e:
-                con.execute("UPDATE documents SET status='failed' WHERE id=?", (doc_id,))
-                con.commit()
+                repo.update_status(doc_id, "failed")
                 print(f"  ✗ {f.name}: {e}")
     finally:
-        con.close()
+        db.close()
 
 
 if __name__ == "__main__":
