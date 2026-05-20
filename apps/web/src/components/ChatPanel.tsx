@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { SourceCard, type Source } from './SourceCard'
+import { SourceCard, renderWithInlineRefs, type Source } from './SourceCard'
 import type { JumpLocation } from './ViewerPanel'
 
 interface Message {
@@ -224,7 +224,11 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
                   ? 'bg-blue-600 text-white'
                   : 'bg-white border text-gray-800'
               }`}>
-                <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                <p className="whitespace-pre-wrap leading-relaxed">
+                  {msg.role === 'assistant' && msg.sources && msg.sources.length > 0
+                    ? renderWithInlineRefs(msg.content, msg.sources, loc => onJumpToSource?.(loc))
+                    : msg.content}
+                </p>
                 {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
                   <SourceCard sources={msg.sources} onJump={loc => onJumpToSource?.(loc)} />
                 )}

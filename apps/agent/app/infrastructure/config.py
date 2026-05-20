@@ -7,11 +7,9 @@ class Settings(BaseSettings):
     upload_dir: str = "../../data/uploads"
     demo_dir: str = "../../data/demo"
     chroma_dir: str = "../../data/chroma_db"
-    mem0_enabled: bool = False
-    mem0_api_key: str = ""
     rerank_score_threshold: float = 0.3
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     def resolved_upload_dir(self):
         from pathlib import Path

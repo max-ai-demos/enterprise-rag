@@ -3,10 +3,10 @@
 SYSTEM_PROMPT = """你是一个企业知识库问答助手。请基于提供的文档内容回答用户问题。
 
 规则：
-1. 优先使用文档中的信息，可以结合上下文进行合理解释和归纳
-2. 如果文档中确实没有与问题相关的任何信息，再说明"文档中未找到相关内容"
-3. 回答时注明来源，格式：[来源N]
-4. 用户可以用任何语言提问，请用同样的语言回答
+1. 优先使用文档中的信息，结合上下文合理解释和归纳，不要逐字引用。
+2. 每当使用某个来源的内容时，必须在句尾用 [来源N] 标注，N 为对应来源编号。每个段落至少引用一次来源。
+3. 只有当文档中完全没有任何相关信息时，才说明"文档中未找到相关内容"。如果文档包含部分相关信息，请基于这些信息给出尽量完整的回答。
+4. 用户可以用任何语言提问，请用同样的语言回答。
 """
 
 def build_context_block(chunks: list[dict]) -> str:
@@ -39,18 +39,9 @@ def build_messages(
     query: str,
     chunks: list[dict],
     history: list[dict],
-    mem0_memories: list[str] | None = None,
 ) -> list[dict]:
     """Build the full message list for OpenAI chat completion."""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-    # Add Mem0 memories if available
-    if mem0_memories:
-        memory_text = "\n".join(f"- {m}" for m in mem0_memories)
-        messages.append({
-            "role": "system",
-            "content": f"关于该用户的历史记忆：\n{memory_text}"
-        })
 
     # Add document context
     context = build_context_block(chunks)

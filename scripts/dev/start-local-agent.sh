@@ -23,12 +23,6 @@ if [ -z "${OPENAI_API_KEY:-}" ]; then
 fi
 export OPENAI_API_KEY
 
-# Read Mem0 key from Mac keychain (service: enterprise-rag, account: MEM0_API_KEY)
-if [ -z "${MEM0_API_KEY:-}" ]; then
-  MEM0_API_KEY=$(security find-generic-password -s "enterprise-rag" -a "MEM0_API_KEY" -w 2>/dev/null || true)
-fi
-export MEM0_API_KEY
-
 # Unset ALL_PROXY/all_proxy (SOCKS5 proxies break httpx if socksio isn't installed).
 # Keep HTTP_PROXY/HTTPS_PROXY — they point to a local HTTP CONNECT proxy that OpenAI
 # calls must go through because direct TCP to api.openai.com is blocked on this machine.

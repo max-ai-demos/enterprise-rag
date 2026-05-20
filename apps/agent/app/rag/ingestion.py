@@ -61,8 +61,8 @@ def parse_document(file_path: str, file_type: str) -> list[dict[str, Any]]:
     chunks = []
 
     if file_type == "pdf":
-        # PyMuPDF: extract text blocks with bbox, normalize to 0-1000
-        # Reference: xxx-ai-agent/_normalize_bbox() + xxx-ai-frontend highlightIndex convention
+        # PyMuPDF: extract text per page (page-level chunking keeps headings with body).
+        # Use a page-bounding-box that covers the whole page.
         import fitz
         doc = fitz.open(file_path)
         chunk_index = 0
@@ -71,28 +71,29 @@ def parse_document(file_path: str, file_type: str) -> list[dict[str, Any]]:
             page = doc[page_num]
             page_w = page.rect.width
             page_h = page.rect.height
+            # Join all text blocks on the page so headings stay with their body
             blocks = page.get_text("blocks")
+            page_text_parts = []
             for block in blocks:
                 x0, y0, x1, y1, text, _block_no, block_type = block
-                if block_type != 0 or not text.strip():
-                    continue
-                norm_bbox = [
-                    round(x0 / page_w * 1000),
-                    round(y0 / page_h * 1000),
-                    round(x1 / page_w * 1000),
-                    round(y1 / page_h * 1000),
-                ]
-                sub_texts = splitter.split_text(text.strip())
-                for sub in sub_texts:
-                    if sub.strip():
-                        chunks.append({
-                            "text": sub.strip(),
-                            "page_num": page_num + 1,
-                            "page_idx": page_num + 1,
-                            "bbox": norm_bbox,
-                            "chunk_index": chunk_index,
-                        })
-                        chunk_index += 1
+                if block_type == 0 and text.strip():
+                    page_text_parts.append(text.strip())
+            page_text = "\n".join(page_text_parts)
+            if not page_text.strip():
+                continue
+            # Full-page bbox (normalized to 0-1000)
+            page_bbox = [0, 0, 1000, 1000]
+            sub_texts = splitter.split_text(page_text)
+            for sub in sub_texts:
+                if sub.strip():
+                    chunks.append({
+                        "text": sub.strip(),
+                        "page_num": page_num + 1,
+                        "page_idx": page_num + 1,
+                        "bbox": page_bbox,
+                        "chunk_index": chunk_index,
+                    })
+                    chunk_index += 1
 
     elif file_type == "docx":
         splitter = SentenceSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
