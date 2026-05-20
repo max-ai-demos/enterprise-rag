@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
@@ -8,6 +8,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [version, setVersion] = useState('')
+
+  useEffect(() => {
+    fetch('/api/health').then(r => r.json()).then(d => setVersion(d.version ?? '')).catch(() => {})
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -68,6 +73,9 @@ export default function LoginPage() {
             {loading ? '登录中...' : '登录'}
           </button>
         </form>
+        {version && (
+          <p className="text-center text-xs text-gray-400 mt-6">v{version}</p>
+        )}
       </div>
     </div>
   )

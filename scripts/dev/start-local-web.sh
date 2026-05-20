@@ -7,6 +7,8 @@ cd "$ROOT_DIR"
 
 AGENT_PORT=$(cat .runtime/local-agent-port 2>/dev/null || echo "8001")
 export AGENT_URL="http://localhost:${AGENT_PORT}"
+# standalone server does process.chdir(__dirname), so relative paths break — use absolute
+export DATABASE_PATH="${ROOT_DIR}/data/enterprise_rag.db"
 
 # Build if .next/standalone doesn't exist
 if [ ! -f "apps/web/.next/standalone/server.js" ]; then
