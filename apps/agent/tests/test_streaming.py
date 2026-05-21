@@ -1,5 +1,4 @@
 # apps/agent/tests/test_streaming.py
-import pytest
 from unittest.mock import patch, MagicMock
 
 
@@ -24,12 +23,10 @@ def test_rag_answer_stream_yields_events():
         }
     }]
 
-    with patch("app.rag.pipeline._retrieve_across_documents", return_value=fake_chunks), \
-         patch("app.rag.pipeline.rewrite_query", return_value="付款期限"), \
-         patch("app.rag.pipeline.get_memories", return_value=[]), \
+    with patch("app.rag.pipeline.generate_multi_queries", return_value=["付款期限"]), \
+         patch("app.rag.pipeline._retrieve_multi_query", return_value=fake_chunks), \
          patch("app.rag.pipeline.rerank", return_value=fake_chunks), \
          patch("app.rag.pipeline.is_confident", return_value=True), \
-         patch("app.rag.pipeline.add_memory"), \
          patch("app.rag.pipeline._get_openai") as mock_openai_fn:
 
         mock_client = mock_openai_fn.return_value
@@ -47,6 +44,7 @@ def test_rag_answer_stream_yields_events():
             document_ids=["doc1"],
             history=[],
             document_metadata={"doc1": {"filename": "contract.pdf", "file_type": "pdf"}},
+            db=MagicMock(),
         ))
 
     types = [e["type"] for e in events]
@@ -63,15 +61,15 @@ def test_rag_answer_stream_yields_events():
 
 
 def test_rag_answer_stream_no_docs():
-    """Empty document list should yield error event."""
-    with patch("app.rag.pipeline._retrieve_across_documents", return_value=[]), \
-         patch("app.rag.pipeline.rewrite_query", return_value="q"), \
-         patch("app.rag.pipeline.get_memories", return_value=[]):
+    """Empty retrieval result should yield error event."""
+    with patch("app.rag.pipeline.generate_multi_queries", return_value=["q"]), \
+         patch("app.rag.pipeline._retrieve_multi_query", return_value=[]):
 
         from app.rag.pipeline import rag_answer_stream
         events = list(rag_answer_stream(
             query="q", user_id="u1", session_id="s1",
             document_ids=[], history=[], document_metadata={},
+            db=MagicMock(),
         ))
 
     assert len(events) == 1
@@ -82,9 +80,8 @@ def test_rag_answer_stream_low_confidence():
     """Low confidence rerank should yield error event."""
     fake_chunks = [{"id": "doc1_0", "text": "text", "score": 0.1, "metadata": {"document_id": "doc1"}}]
 
-    with patch("app.rag.pipeline._retrieve_across_documents", return_value=fake_chunks), \
-         patch("app.rag.pipeline.rewrite_query", return_value="q"), \
-         patch("app.rag.pipeline.get_memories", return_value=[]), \
+    with patch("app.rag.pipeline.generate_multi_queries", return_value=["q"]), \
+         patch("app.rag.pipeline._retrieve_multi_query", return_value=fake_chunks), \
          patch("app.rag.pipeline.rerank", return_value=fake_chunks), \
          patch("app.rag.pipeline.is_confident", return_value=False):
 
@@ -92,6 +89,7 @@ def test_rag_answer_stream_low_confidence():
         events = list(rag_answer_stream(
             query="q", user_id="u1", session_id="s1",
             document_ids=["doc1"], history=[], document_metadata={},
+            db=MagicMock(),
         ))
 
     assert len(events) == 1
