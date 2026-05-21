@@ -61,27 +61,31 @@ def parse_document(file_path: str, file_type: str) -> list[dict[str, Any]]:
         splitter = SentenceSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
         for page_num in range(len(doc)):
             page = doc[page_num]
+            pw = page.rect.width or 1
+            ph = page.rect.height or 1
             blocks = page.get_text("blocks")
-            page_text_parts = []
             for block in blocks:
                 x0, y0, x1, y1, text, _block_no, block_type = block
-                if block_type == 0 and text.strip():
-                    page_text_parts.append(text.strip())
-            page_text = "\n".join(page_text_parts)
-            if not page_text.strip():
-                continue
-            page_bbox = [0, 0, 1000, 1000]
-            sub_texts = splitter.split_text(page_text)
-            for sub in sub_texts:
-                if sub.strip():
-                    chunks.append({
-                        "text": sub.strip(),
-                        "page_num": page_num + 1,
-                        "page_idx": page_num + 1,
-                        "bbox": page_bbox,
-                        "chunk_index": chunk_index,
-                    })
-                    chunk_index += 1
+                if block_type != 0 or not text.strip():
+                    continue
+                # Normalize bbox to [0..1000] for frontend compatibility
+                bbox = [
+                    round(x0 / pw * 1000, 1),
+                    round(y0 / ph * 1000, 1),
+                    round(x1 / pw * 1000, 1),
+                    round(y1 / ph * 1000, 1),
+                ]
+                sub_texts = splitter.split_text(text.strip()) if len(text.strip()) > CHUNK_SIZE else [text.strip()]
+                for sub in sub_texts:
+                    if sub.strip():
+                        chunks.append({
+                            "text": sub.strip(),
+                            "page_num": page_num + 1,
+                            "page_idx": page_num + 1,
+                            "bbox": bbox,
+                            "chunk_index": chunk_index,
+                        })
+                        chunk_index += 1
 
     elif file_type == "docx":
         splitter = SentenceSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
