@@ -10,8 +10,8 @@ from app.infrastructure.config import settings
 
 logger = logging.getLogger(__name__)
 
-CHUNK_SIZE = 1500
-CHUNK_OVERLAP = 150
+CHUNK_SIZE = 600
+CHUNK_OVERLAP = 80
 
 _WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 

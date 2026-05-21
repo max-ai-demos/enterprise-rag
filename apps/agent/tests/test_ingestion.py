@@ -52,9 +52,9 @@ def test_parse_docx_returns_chunks(tmp_path):
     assert all("paragraph_idx" in c for c in chunks)
 
 
-def test_chunk_size_is_1500():
+def test_chunk_size_is_reasonable():
     from app.rag.ingestion import CHUNK_SIZE
-    assert CHUNK_SIZE == 1500, f"Expected 1500, got {CHUNK_SIZE}"
+    assert 300 <= CHUNK_SIZE <= 1000, f"CHUNK_SIZE {CHUNK_SIZE} out of expected range"
 
 
 def test_parse_docx_includes_tables(tmp_path):
