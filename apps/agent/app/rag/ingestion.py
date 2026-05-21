@@ -1,4 +1,11 @@
 # apps/agent/app/rag/ingestion.py
+#
+# PDF 解析当前使用 PyMuPDF（fitz），适用于文字版 PDF。
+# 如需商业化升级（扫描版 OCR、精确表格/图片解析），替换为 MinerU + Datalab：
+#   - 参考: xxx/xxx-ai-agent/app/rag/processor/pdf_processor.py
+#   - Datalab 返回带精确 bbox 的结构化 JSON，可同时填充 document_index 表（存图片 URL）
+#   - 文件存储从本地磁盘改为 S3，解析结果缓存到 S3 避免重复计算
+#
 import logging
 from pathlib import Path
 from typing import Any
