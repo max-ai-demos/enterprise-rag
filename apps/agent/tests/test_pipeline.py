@@ -23,41 +23,39 @@ def test_query_rewriter_with_context(monkeypatch):
     result = rewrite_query("What is the deadline?", history)
     assert "payment" in result.lower() or "deadline" in result.lower()
 
-def test_hybrid_retriever_returns_results(tmp_path, monkeypatch):
+def test_hybrid_retriever_returns_results(monkeypatch):
     """Verify hybrid retriever merges vector + BM25 results and deduplicates."""
-    import chromadb
+    from unittest.mock import MagicMock
     from app.rag.hybrid_retriever import HybridRetriever
 
-    # Setup: create a test ChromaDB collection with sample docs
-    client = chromadb.EphemeralClient()
-    col = client.create_collection("test_col")
-    col.add(
-        ids=["doc1_0", "doc1_1", "doc1_2"],
-        documents=[
-            "The payment deadline is 30 days from invoice.",
-            "Late fees apply after the payment deadline passes.",
-            "Contract termination requires 90 days notice.",
-        ],
-        embeddings=[[0.1]*1536, [0.2]*1536, [0.3]*1536],
-        metadatas=[
-            {"document_id": "doc1", "chunk_index": "0", "page_num": "1"},
-            {"document_id": "doc1", "chunk_index": "1", "page_num": "1"},
-            {"document_id": "doc1", "chunk_index": "2", "page_num": "2"},
-        ],
-    )
+    sample_chunks = [
+        {"id": "doc1_0", "text": "The payment deadline is 30 days from invoice.",
+         "embedding": [0.1] * 1536, "metadata": {"document_id": "doc1", "page_num": 1}},
+        {"id": "doc1_1", "text": "Late fees apply after the payment deadline passes.",
+         "embedding": [0.2] * 1536, "metadata": {"document_id": "doc1", "page_num": 1}},
+        {"id": "doc1_2", "text": "Contract termination requires 90 days notice.",
+         "embedding": [0.3] * 1536, "metadata": {"document_id": "doc1", "page_num": 2}},
+    ]
 
-    # Mock the embed call
+    mock_repo = MagicMock()
+    mock_repo.get_all_for_document.return_value = sample_chunks
+
     monkeypatch.setattr(
         "app.rag.hybrid_retriever._embed_query",
         lambda q: [0.1] * 1536,
     )
 
-    retriever = HybridRetriever(collection=col)
+    def mock_chunk_repo(db):
+        return mock_repo
+
+    monkeypatch.setattr("app.db.repository.ChunkRepository", mock_chunk_repo)
+
+    db = MagicMock()
+    retriever = HybridRetriever(db=db, document_id="doc1")
     results = retriever.retrieve("payment deadline", top_k=5)
 
     assert len(results) > 0
     assert all("text" in r and "score" in r and "metadata" in r for r in results)
-    # No duplicates
     ids = [r["id"] for r in results]
     assert len(ids) == len(set(ids))
 

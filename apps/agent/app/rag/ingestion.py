@@ -2,7 +2,7 @@
 import logging
 from pathlib import Path
 from typing import Any
-import chromadb
+from sqlalchemy.orm import Session
 from llama_index.core import Settings as LlamaSettings
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.embeddings.openai import OpenAIEmbedding
@@ -50,28 +50,17 @@ def _setup_llama_settings():
     )
 
 
-def _get_chroma_collection(document_id: str):
-    client = chromadb.PersistentClient(path=str(settings.resolved_chroma_dir()))
-    collection_name = f"doc_{document_id.replace('-', '_')}"
-    return client, client.get_or_create_collection(collection_name)
-
-
 def parse_document(file_path: str, file_type: str) -> list[dict[str, Any]]:
     """Parse a document into chunks with position metadata."""
     chunks = []
 
     if file_type == "pdf":
-        # PyMuPDF: extract text per page (page-level chunking keeps headings with body).
-        # Use a page-bounding-box that covers the whole page.
         import fitz
         doc = fitz.open(file_path)
         chunk_index = 0
         splitter = SentenceSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
         for page_num in range(len(doc)):
             page = doc[page_num]
-            page_w = page.rect.width
-            page_h = page.rect.height
-            # Join all text blocks on the page so headings stay with their body
             blocks = page.get_text("blocks")
             page_text_parts = []
             for block in blocks:
@@ -81,7 +70,6 @@ def parse_document(file_path: str, file_type: str) -> list[dict[str, Any]]:
             page_text = "\n".join(page_text_parts)
             if not page_text.strip():
                 continue
-            # Full-page bbox (normalized to 0-1000)
             page_bbox = [0, 0, 1000, 1000]
             sub_texts = splitter.split_text(page_text)
             for sub in sub_texts:
@@ -140,47 +128,28 @@ def parse_document(file_path: str, file_type: str) -> list[dict[str, Any]]:
     return chunks
 
 
-def ingest_document(document_id: str, file_path: str, file_type: str) -> int:
-    """Parse, embed, and store. Returns chunk count."""
+def ingest_document(document_id: str, file_path: str, file_type: str, db: Session) -> int:
+    """Parse, embed, and store chunks in MySQL. Returns chunk count."""
+    from app.db.repository import ChunkRepository
+
     _setup_llama_settings()
     chunks = parse_document(file_path, file_type)
     if not chunks:
         logger.warning(f"No chunks from {file_path}")
         return 0
 
-    client, collection = _get_chroma_collection(document_id)
-
-    ids = [f"{document_id}_{c['chunk_index']}" for c in chunks]
-    texts = [c["text"] for c in chunks]
-    # Serialize metadata: all values must be strings for ChromaDB
-    metadatas = []
-    for c in chunks:
-        meta = {k: str(v) for k, v in c.items() if k != "text"}
-        meta["document_id"] = document_id
-        meta["file_type"] = file_type
-        metadatas.append(meta)
-
+    chunk_repo = ChunkRepository(db)
     embed_model = LlamaSettings.embed_model
     batch_size = 100
-    for i in range(0, len(texts), batch_size):
-        batch_texts = texts[i:i + batch_size]
-        batch_ids = ids[i:i + batch_size]
-        batch_metas = metadatas[i:i + batch_size]
-        embeddings = embed_model.get_text_embedding_batch(batch_texts)
-        collection.upsert(
-            ids=batch_ids,
-            documents=batch_texts,
-            embeddings=embeddings,
-            metadatas=batch_metas,
-        )
+
+    for i in range(0, len(chunks), batch_size):
+        batch = chunks[i:i + batch_size]
+        embeddings = embed_model.get_text_embedding_batch([c["text"] for c in batch])
+        chunk_repo.upsert_batch(document_id, batch, embeddings, file_type)
 
     return len(chunks)
 
 
-def delete_document_vectors(document_id: str):
-    client = chromadb.PersistentClient(path=str(settings.resolved_chroma_dir()))
-    collection_name = f"doc_{document_id.replace('-', '_')}"
-    try:
-        client.delete_collection(collection_name)
-    except Exception:
-        pass
+def delete_document_vectors(document_id: str, db: Session):
+    from app.db.repository import ChunkRepository
+    ChunkRepository(db).delete_by_document(document_id)

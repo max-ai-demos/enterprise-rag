@@ -2,10 +2,9 @@
 import json
 import logging
 from typing import Generator
-import chromadb
+from sqlalchemy.orm import Session
 from openai import OpenAI
 from app.infrastructure.config import settings
-from app.rag.ingestion import _get_chroma_collection
 from app.rag.query_rewriter import generate_multi_queries
 from app.rag.hybrid_retriever import HybridRetriever
 from app.rag.reranker import rerank
@@ -23,26 +22,13 @@ def _get_openai() -> OpenAI:
     return _openai_client
 
 
-def _get_collection_for_document(document_id: str):
-    client = chromadb.PersistentClient(path=str(settings.resolved_chroma_dir()))
-    name = f"doc_{document_id.replace('-', '_')}"
-    try:
-        return client.get_collection(name)
-    except Exception as e:
-        logger.debug("Collection not found for %s: %s", document_id, e)
-        return None
-
-
 def _retrieve_across_documents(
-    query: str, document_ids: list[str], top_k: int = 15
+    query: str, document_ids: list[str], db: Session, top_k: int = 15
 ) -> list[dict]:
     """Retrieve from multiple document collections and merge results."""
     all_results = []
     for doc_id in document_ids:
-        collection = _get_collection_for_document(doc_id)
-        if collection is None:
-            continue
-        retriever = HybridRetriever(collection=collection)
+        retriever = HybridRetriever(db=db, document_id=doc_id)
         results = retriever.retrieve(query, top_k=top_k)
         for r in results:
             r["metadata"]["document_id"] = doc_id
@@ -53,13 +39,13 @@ def _retrieve_across_documents(
 
 
 def _retrieve_multi_query(
-    queries: list[str], document_ids: list[str], top_k: int = 10
+    queries: list[str], document_ids: list[str], db: Session, top_k: int = 10
 ) -> list[dict]:
     """Retrieve for each query, merge and deduplicate by chunk text prefix."""
     seen: set[str] = set()
     merged: list[dict] = []
     for q in queries:
-        for chunk in _retrieve_across_documents(q, document_ids, top_k=top_k):
+        for chunk in _retrieve_across_documents(q, document_ids, db, top_k=top_k):
             key = chunk["text"][:80]
             if key not in seen:
                 seen.add(key)
@@ -95,7 +81,6 @@ def _build_sources(reranked: list[dict]) -> list[dict]:
         if meta.get("sheet_name"):
             source["sheet_name"] = meta["sheet_name"]
             source["row_start"] = int(meta.get("row_start", 1))
-        # Deduplicate by document + location key
         loc_key = f"{source['document_id']}:{source.get('page_num', source.get('paragraph_idx', source.get('row_start', '')))}"
         if loc_key not in seen:
             seen.add(loc_key)
@@ -109,38 +94,31 @@ def rag_answer(
     session_id: str,
     document_ids: list[str],
     history: list[dict],
-    document_metadata: dict[str, dict],  # doc_id -> {filename, file_type}
+    document_metadata: dict[str, dict],
+    db: Session,
 ) -> dict:
     """
     Main RAG pipeline. Returns:
     {"answer": str, "sources": [...], "session_id": str}
     """
-    # Step 1: Multi-query generation
     queries = generate_multi_queries(query, history)
     logger.info(f"[RAG] Multi-queries: {queries}")
 
-    # Step 2: Multi-query hybrid retrieval
-    raw_chunks = _retrieve_multi_query(queries, document_ids)
+    raw_chunks = _retrieve_multi_query(queries, document_ids, db)
     if not raw_chunks:
         return {"answer": "没有可查询的文档内容。", "sources": [], "session_id": session_id}
 
-    # Enrich chunks with filename from document_metadata
     for chunk in raw_chunks:
         doc_id = chunk["metadata"].get("document_id", "")
         if doc_id in document_metadata:
             chunk["metadata"].update(document_metadata[doc_id])
 
-    # Step 3: Rerank (use primary query)
     reranked = rerank(queries[0], raw_chunks, top_n=5)
 
-    # Step 4: Confidence check
     if not is_confident(reranked):
         return {"answer": NOT_FOUND_MESSAGE, "sources": [], "session_id": session_id}
 
-    # Step 5: Build sources for response
     sources = _build_sources(reranked)
-
-    # Step 6: Build prompt and call OpenAI
     messages = build_messages(query, reranked, history)
 
     try:
@@ -166,6 +144,7 @@ def rag_answer_stream(
     document_ids: list[str],
     history: list[dict],
     document_metadata: dict[str, dict],
+    db: Session,
 ) -> Generator[dict, None, None]:
     """
     Streaming RAG pipeline. Yields dicts:
@@ -177,7 +156,7 @@ def rag_answer_stream(
     queries = generate_multi_queries(query, history)
     logger.info(f"[RAG] Multi-queries (stream): {queries}")
 
-    raw_chunks = _retrieve_multi_query(queries, document_ids)
+    raw_chunks = _retrieve_multi_query(queries, document_ids, db)
     if not raw_chunks:
         yield {"type": "error", "message": "没有可查询的文档内容。"}
         return

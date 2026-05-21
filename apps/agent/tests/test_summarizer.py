@@ -5,7 +5,6 @@ import pytest
 from unittest.mock import MagicMock
 
 _STUB_NAMES = [
-    "chromadb",
     "llama_index",
     "llama_index.core",
     "llama_index.core.node_parser",
@@ -22,12 +21,6 @@ def _stub_heavy_deps():
     for name in _STUB_NAMES:
         if name not in sys.modules:
             sys.modules[name] = types.ModuleType(name)
-
-    chromadb_mod = sys.modules["chromadb"]
-    if not hasattr(chromadb_mod, "HttpClient"):
-        chromadb_mod.HttpClient = MagicMock()
-    if not hasattr(chromadb_mod, "PersistentClient"):
-        chromadb_mod.PersistentClient = MagicMock()
 
     core_mod = sys.modules["llama_index.core"]
     if not hasattr(core_mod, "Settings"):

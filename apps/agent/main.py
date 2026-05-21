@@ -1,9 +1,18 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import document, chat, history
 from app.version import APP_VERSION
 
-app = FastAPI(title="Enterprise RAG Agent")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from app.db.database import create_chunks_table
+    create_chunks_table()
+    yield
+
+
+app = FastAPI(title="Enterprise RAG Agent", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

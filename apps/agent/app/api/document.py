@@ -26,7 +26,7 @@ def _run_ingestion(doc_id: str, file_path: str, file_type: str, database_url: st
     with Session() as session:
         repo = DocumentRepository(session)
         try:
-            count = ingest_document(doc_id, file_path, file_type)
+            count = ingest_document(doc_id, file_path, file_type, session)
             repo.update_status(doc_id, "ready", count)
         except Exception as e:
             logger.error(f"Ingestion failed for {doc_id}: {e}")
@@ -210,7 +210,7 @@ def delete_document(document_id: str, user_id: str, db: Session = Depends(get_db
     if doc.user_id != user_id:
         raise HTTPException(403, "Not your document")
     delete_file(doc.file_path)
-    delete_document_vectors(document_id)
+    delete_document_vectors(document_id, db)
     repo.delete(document_id)
     return {"deleted": True}
 

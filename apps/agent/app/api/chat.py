@@ -70,6 +70,7 @@ def chat_message(req: ChatRequest, db: Session = Depends(get_db)):
             document_ids=doc_ids,
             history=history,
             document_metadata=doc_meta,
+            db=db,
         )
     except Exception as e:
         logger.error("RAG pipeline failed: %s", e)
@@ -130,6 +131,7 @@ def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
             document_ids=doc_ids,
             history=history,
             document_metadata=doc_meta,
+            db=db,
         ):
             if event["type"] == "sources":
                 sources = event["sources"]

@@ -8,7 +8,6 @@ def client(tmp_path, monkeypatch):
     db_url = f"sqlite:///{tmp_path}/test.db"
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
-    monkeypatch.setenv("CHROMA_DIR", str(tmp_path / "chroma"))
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     import importlib
     import app.infrastructure.config as config_mod

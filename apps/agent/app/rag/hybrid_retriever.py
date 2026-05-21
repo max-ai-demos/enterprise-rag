@@ -4,7 +4,7 @@ import math
 import re
 from collections import defaultdict
 from typing import Any
-import chromadb
+from sqlalchemy.orm import Session
 from llama_index.embeddings.openai import OpenAIEmbedding
 from app.infrastructure.config import settings
 
@@ -21,6 +21,15 @@ def _get_embed_model() -> OpenAIEmbedding:
 
 def _embed_query(query: str) -> list[float]:
     return _get_embed_model().get_query_embedding(query)
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 def _tokenize(text: str) -> list[str]:
@@ -63,30 +72,31 @@ def _reciprocal_rank_fusion(
 
 
 class HybridRetriever:
-    def __init__(self, collection: chromadb.Collection):
-        self.collection = collection
+    def __init__(self, db: Session, document_id: str):
+        self.db = db
+        self.document_id = document_id
 
     def retrieve(self, query: str, top_k: int = 15) -> list[dict[str, Any]]:
-        """Vector + BM25 hybrid retrieval with RRF fusion."""
-        # Fetch all docs from collection for BM25
-        all_results = self.collection.get(
-            include=["documents", "metadatas", "embeddings"]
-        )
-        if not all_results["ids"]:
+        """Vector + BM25 hybrid retrieval with RRF fusion. Cosine computed in Python."""
+        from app.db.repository import ChunkRepository
+
+        all_chunks = ChunkRepository(self.db).get_all_for_document(self.document_id)
+        if not all_chunks:
             return []
 
-        ids = all_results["ids"]
-        documents = all_results.get("documents") or [""] * len(ids)
-        metadatas = all_results.get("metadatas") or [{}] * len(ids)
+        ids = [c["id"] for c in all_chunks]
+        documents = [c["text"] for c in all_chunks]
+        id_to_doc = {c["id"]: c["text"] for c in all_chunks}
+        id_to_meta = {c["id"]: c["metadata"] for c in all_chunks}
+        embeddings = [c["embedding"] for c in all_chunks]
 
-        # --- Vector retrieval ---
+        # --- Vector retrieval (cosine in Python) ---
         query_emb = _embed_query(query)
-        vector_results = self.collection.query(
-            query_embeddings=[query_emb],
-            n_results=min(top_k, len(ids)),
-            include=["distances", "metadatas", "documents"],
-        )
-        vector_ranked = vector_results["ids"][0]
+        cos_sims = [_cosine_similarity(query_emb, emb) for emb in embeddings]
+        vector_ranked = [
+            ids[i] for i in sorted(range(len(ids)),
+                                   key=lambda x: cos_sims[x], reverse=True)
+        ][:top_k]
 
         # --- BM25 retrieval ---
         bm25_scores = _bm25_scores(query, documents)
@@ -99,16 +109,13 @@ class HybridRetriever:
         fused_scores = _reciprocal_rank_fusion([vector_ranked, bm25_ranked])
         top_ids = sorted(fused_scores, key=fused_scores.get, reverse=True)[:top_k]
 
-        # Build result list
-        id_to_doc = dict(zip(ids, documents))
-        id_to_meta = dict(zip(ids, metadatas))
-        results = []
-        for doc_id in top_ids:
-            if doc_id in id_to_doc:
-                results.append({
-                    "id": doc_id,
-                    "text": id_to_doc[doc_id],
-                    "score": fused_scores[doc_id],
-                    "metadata": id_to_meta.get(doc_id, {}),
-                })
-        return results
+        return [
+            {
+                "id": chunk_id,
+                "text": id_to_doc[chunk_id],
+                "score": fused_scores[chunk_id],
+                "metadata": id_to_meta.get(chunk_id, {}),
+            }
+            for chunk_id in top_ids
+            if chunk_id in id_to_doc
+        ]
