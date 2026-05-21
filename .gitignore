@@ -15,3 +15,7 @@ __pycache__/
 .DS_Store
 *.png
 .playwright-mcp/
+
+# Internal planning docs and notes (not for public repo)
+docs/
+INTERNAL_NOTES.md

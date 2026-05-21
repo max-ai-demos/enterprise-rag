@@ -30,15 +30,14 @@ import { bboxToHighlightArea, bboxToScrollOffsetTopPx } from '../../utils/highli
 import { PdfTextSelectionOverlay } from '../PdfTextSelection';
 import type { PdfTextSelectionHighlightPayload } from '../PdfTextSelection/types';
 
-const PDFJS_WORKER_URL = 'https://cdn.eu.xxx.ai/frontend/pdfjs/pdf.worker.min.js';
-const PDFJS_CMAP_URL = 'https://cdn.eu.xxx.ai/frontend/pdfjs/cmaps/';
+const PDFJS_WORKER_URL = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+const PDFJS_CMAP_URL = 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import '../../styles/pdf-viewer.css';
 
 // Configure pdfjs worker (only on client side)
-// Use local worker file from public directory (same as web/xxx-pdf-viewer approach)
 if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
 }
