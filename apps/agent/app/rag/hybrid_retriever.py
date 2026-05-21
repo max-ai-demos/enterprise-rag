@@ -109,12 +109,18 @@ class HybridRetriever:
         fused_scores = _reciprocal_rank_fusion([vector_ranked, bm25_ranked])
         top_ids = sorted(fused_scores, key=fused_scores.get, reverse=True)[:top_k]
 
+        # Build id → cosine_score map for score fusion downstream
+        id_to_cosine = {ids[i]: cos_sims[i] for i in range(len(ids))}
+
         return [
             {
                 "id": chunk_id,
                 "text": id_to_doc[chunk_id],
                 "score": fused_scores[chunk_id],
-                "metadata": id_to_meta.get(chunk_id, {}),
+                "metadata": {
+                    **id_to_meta.get(chunk_id, {}),
+                    "cosine_score": round(id_to_cosine.get(chunk_id, 0.0), 4),
+                },
             }
             for chunk_id in top_ids
             if chunk_id in id_to_doc

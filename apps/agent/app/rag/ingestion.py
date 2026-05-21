@@ -1,10 +1,12 @@
 # apps/agent/app/rag/ingestion.py
 #
-# PDF 解析当前使用 PyMuPDF（fitz），适用于文字版 PDF。
-# 如需商业化升级（扫描版 OCR、精确表格/图片解析），替换为 MinerU + Datalab：
-#   - 参考: xxx/xxx-ai-agent/app/rag/processor/pdf_processor.py
-#   - Datalab 返回带精确 bbox 的结构化 JSON，可同时填充 document_index 表（存图片 URL）
-#   - 文件存储从本地磁盘改为 S3，解析结果缓存到 S3 避免重复计算
+# PDF 解析默认使用 PyMuPDF（fitz），适用于文字版 PDF。
+#
+# 商业化升级路径（扫描版 OCR、精确表格/图片解析）：
+#   将 .env 中的 PDF_PARSER_PROVIDER 改为 "datalab" 或 "mineru"，并填写对应 Key/URL。
+#   - datalab_client.py / mineru_client.py 已就绪，切换后会自动走对应解析路径。
+#   - Datalab 返回带精确 bbox 的结构化 JSON，可同时填充 document_index 表（存图片 URL）。
+#   - 如需持久化解析结果，文件存储从本地磁盘升级为 S3，缓存解析结果避免重复计算。
 #
 import logging
 from pathlib import Path
@@ -19,6 +21,22 @@ logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 600
 CHUNK_OVERLAP = 80
+
+
+def _get_splitter():
+    """Return the configured chunker.
+
+    CHUNK_STRATEGY=sentence (default): LlamaIndex SentenceSplitter
+    CHUNK_STRATEGY=smart:              段落优先、句子兜底的 SmartChunker
+    切换策略后需重新运行 reingest_all.py。
+    """
+    if settings.chunk_strategy == "smart":
+        from app.rag.chunking import SmartChunker
+        return SmartChunker(
+            target_size=settings.smart_chunk_target_size,
+            min_size=settings.smart_chunk_min_size,
+        )
+    return SentenceSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
 
 _WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
@@ -65,7 +83,7 @@ def parse_document(file_path: str, file_type: str) -> list[dict[str, Any]]:
         import fitz
         doc = fitz.open(file_path)
         chunk_index = 0
-        splitter = SentenceSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
+        splitter = _get_splitter()
         for page_num in range(len(doc)):
             page = doc[page_num]
             pw = page.rect.width or 1
@@ -94,8 +112,31 @@ def parse_document(file_path: str, file_type: str) -> list[dict[str, Any]]:
                         })
                         chunk_index += 1
 
+    elif file_type in ("ppt", "pptx"):
+        from pptx import Presentation
+        prs = Presentation(file_path)
+        splitter = _get_splitter()
+        chunk_index = 0
+        for slide_idx, slide in enumerate(prs.slides):
+            texts = []
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text.strip():
+                    texts.append(shape.text.strip())
+            if not texts:
+                continue
+            slide_text = "\n".join(texts)
+            sub_texts = splitter.split_text(slide_text) if hasattr(splitter, "split_text") else [slide_text]
+            for sub in sub_texts:
+                if sub.strip():
+                    chunks.append({
+                        "text": sub.strip(),
+                        "slide_num": slide_idx + 1,
+                        "chunk_index": chunk_index,
+                    })
+                    chunk_index += 1
+
     elif file_type == "docx":
-        splitter = SentenceSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
+        splitter = _get_splitter()
         chunk_index = 0
         for block in _parse_docx_blocks(file_path):
             for sub in splitter.split_text(block["text"]):
@@ -127,7 +168,7 @@ def parse_document(file_path: str, file_type: str) -> list[dict[str, Any]]:
 
     elif file_type == "txt":
         text = Path(file_path).read_text(encoding="utf-8", errors="ignore")
-        splitter = SentenceSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
+        splitter = _get_splitter()
         for chunk_index, sub in enumerate(splitter.split_text(text)):
             if sub.strip():
                 chunks.append({
@@ -139,12 +180,83 @@ def parse_document(file_path: str, file_type: str) -> list[dict[str, Any]]:
     return chunks
 
 
+def _parse_pdf_cloud(file_path: str) -> list[dict]:
+    """Parse PDF via Datalab or MinerU and return chunks in the same format as parse_document."""
+    import asyncio
+    import json as _json
+
+    provider = settings.pdf_parser_provider
+    file_content = Path(file_path).read_bytes()
+    file_name = Path(file_path).name
+    splitter = SentenceSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
+    chunks = []
+
+    if provider == "datalab":
+        from app.infrastructure.datalab_client import DatalabClient
+        client = DatalabClient()
+        _markdown, extracted_dir = asyncio.run(client.process_pdf(file_content, file_name))
+        pdf_name = Path(file_path).stem
+        content_list_path = extracted_dir / pdf_name / f"{pdf_name}_content_list.json"
+        content_list = _json.loads(content_list_path.read_text(encoding="utf-8"))
+        chunk_index = 0
+        for item in content_list:
+            text = item.get("text") or item.get("table_body") or ""
+            if not text.strip():
+                continue
+            page_idx = item.get("page_idx", 0)
+            bbox = item.get("bbox") or []
+            for sub in splitter.split_text(text.strip()):
+                if sub.strip():
+                    chunks.append({
+                        "text": sub.strip(),
+                        "page_num": page_idx + 1,
+                        "page_idx": page_idx + 1,
+                        "bbox": bbox,
+                        "chunk_index": chunk_index,
+                    })
+                    chunk_index += 1
+
+    elif provider == "mineru":
+        from app.infrastructure.mineru_client import MineruClient
+        client = MineruClient()
+        markdown = client.process_pdf(file_content, file_name)
+        chunk_index = 0
+        for sub in splitter.split_text(markdown):
+            if sub.strip():
+                chunks.append({
+                    "text": sub.strip(),
+                    "page_num": 0,
+                    "page_idx": 0,
+                    "bbox": [],
+                    "chunk_index": chunk_index,
+                })
+                chunk_index += 1
+
+    else:
+        logger.warning(f"Unknown pdf_parser_provider '{provider}', falling back to PyMuPDF")
+        return parse_document(file_path, "pdf")
+
+    logger.info(f"Cloud PDF parse ({provider}): {len(chunks)} chunks from {file_name}")
+    return chunks
+
+
 def ingest_document(document_id: str, file_path: str, file_type: str, db: Session) -> int:
-    """Parse, embed, and store chunks in MySQL. Returns chunk count."""
+    """Parse, embed, and store chunks in MySQL. Returns chunk count.
+
+    PDF parsing provider is controlled by PDF_PARSER_PROVIDER in .env:
+      "pymupdf"  — default, no extra config
+      "datalab"  — requires DATALAB_API_KEY
+      "mineru"   — requires MINERU_BASE_URL
+    """
     from app.db.repository import ChunkRepository
 
     _setup_llama_settings()
-    chunks = parse_document(file_path, file_type)
+
+    # Use cloud parser when configured; fall back to PyMuPDF otherwise.
+    if file_type == "pdf" and settings.pdf_parser_provider != "pymupdf":
+        chunks = _parse_pdf_cloud(file_path)
+    else:
+        chunks = parse_document(file_path, file_type)
     if not chunks:
         logger.warning(f"No chunks from {file_path}")
         return 0
