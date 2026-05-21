@@ -85,15 +85,12 @@ export const PageList: React.FC<PageListProps> = (props) => {
             searchSelected && searchSelected.pageNumber === pageNumber
               ? `${pageNumber}-${searchSelected.hitOrdinal}`
               : null;
-          const rawHighlights = selected ? (searchHighlightsByPage?.[pageNumber] ?? []) : [];
-          const searchHighlights: HighlightArea[] =
-            selected && rawHighlights.length > 0
-              ? rawHighlights.map((h) => ({
-                  ...h,
-                  color: h.id === selected ? '#FFBF00' : '#FFDD57',
-                  opacity: h.id === selected ? 0.45 : 0.25,
-                }))
-              : [];
+          const rawHighlights = searchHighlightsByPage?.[pageNumber] ?? [];
+          const searchHighlights: HighlightArea[] = rawHighlights.map((h) => ({
+            ...h,
+            color: selected && h.id === selected ? '#FFBF00' : '#FFDD57',
+            opacity: selected && h.id === selected ? 0.45 : 0.25,
+          }));
           const selectionHighlights = selectionHighlightsByPage?.[pageNumber] ?? [];
           const indexHighlights = indexHighlightsByPage?.[pageNumber] ?? [];
           // 确保索引高亮始终显示（即使没有搜索高亮）

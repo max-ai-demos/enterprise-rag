@@ -306,12 +306,14 @@ const PDFViewerInner = React.forwardRef(function PDFViewerInner(
     if (highlightText === undefined) return;
 
     const nextValue = highlightText;
-    const keyword = nextValue.trim();
+    // Normalize whitespace: chunk_text from backend uses \n between lines,
+    // but PDFJS page text is built with spaces between text items
+    const keyword = nextValue.trim().replace(/\s+/g, ' ');
     const propChanged = lastHighlightTextValueRef.current !== nextValue;
 
     if (propChanged) {
       lastHighlightTextValueRef.current = nextValue;
-      setSearch((prev) => ({ ...prev, inputValue: nextValue }));
+      setSearch((prev) => ({ ...prev, inputValue: keyword }));
     }
 
     if (!keyword) {
@@ -322,16 +324,13 @@ const PDFViewerInner = React.forwardRef(function PDFViewerInner(
       return;
     }
 
-    // 高亮不应强制展开搜索面板，保持用户当前面板状态
-
-    const userHasNotEdited = search.inputValue === nextValue;
-    if (!propChanged && !userHasNotEdited) return;
-
+    // lastHighlightTextRunRef deduplicates: skip if same keyword AND same doc instance
+    // (doc changes when PDF reloads; null doc means search was attempted before PDF was ready)
     const lastRun = lastHighlightTextRunRef.current;
     if (lastRun && lastRun.keyword === keyword && lastRun.doc === doc) return;
     lastHighlightTextRunRef.current = { keyword, doc };
     void runSearch(keyword);
-  }, [doc, highlightText, resetSearch, runSearch, search.inputValue, setSearch, setShowSearch]);
+  }, [doc, highlightText, resetSearch, runSearch, setSearch]);
 
   const leftPanelOpen = showThumbnails || showSearch;
   const leftPanelWidth = (showThumbnails ? 120 : 0) + (showSearch ? 192 : 0);
