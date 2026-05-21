@@ -139,6 +139,52 @@ def generate_summary(document_id: str, db: Session = Depends(get_db)):
         raise HTTPException(500, f"Summarization failed: {e}")
 
 
+@router.post("/{document_id}/summary/stream")
+def generate_summary_stream(document_id: str, db: Session = Depends(get_db)):
+    """Streaming summary via SSE. Yields progress then text deltas."""
+    import json
+    from fastapi.responses import StreamingResponse
+    from app.rag.summarizer import get_document_full_text, summarize_document_stream
+    from app.infrastructure.config import settings as cfg
+
+    repo = DocumentRepository(db)
+    doc = repo.get_by_id(document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    if doc.summary_status == "ready" and doc.summary:
+        cached = doc.summary
+        def _cached():
+            yield f"data: {json.dumps({'type': 'delta', 'content': cached})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'cached': True})}\n\n"
+        return StreamingResponse(_cached(), media_type="text/event-stream")
+
+    full_path = cfg.resolved_upload_dir().parent / doc.file_path
+    if not full_path.exists():
+        raise HTTPException(404, "File not found on disk")
+
+    file_path_str = str(full_path)
+    file_type = doc.file_type
+    database_url = cfg.database_url
+
+    def _generate():
+        full_text = get_document_full_text(file_path_str, file_type)
+        final_summary = ""
+        for event in summarize_document_stream(full_text):
+            if event["type"] == "done":
+                final_summary = event.get("summary", "")
+            yield f"data: {json.dumps(event)}\n\n"
+        if final_summary:
+            from sqlalchemy import create_engine
+            from sqlalchemy.orm import sessionmaker
+            engine = create_engine(database_url, pool_pre_ping=True)
+            Session_ = sessionmaker(bind=engine)
+            with Session_() as session:
+                DocumentRepository(session).update_summary(document_id, final_summary)
+
+    return StreamingResponse(_generate(), media_type="text/event-stream")
+
+
 @router.get("/{document_id}/summary")
 def get_summary(document_id: str, db: Session = Depends(get_db)):
     """Get cached summary. Returns 404 if not yet generated."""

@@ -6,7 +6,7 @@ import chromadb
 from openai import OpenAI
 from app.infrastructure.config import settings
 from app.rag.ingestion import _get_chroma_collection
-from app.rag.query_rewriter import rewrite_query
+from app.rag.query_rewriter import generate_multi_queries
 from app.rag.hybrid_retriever import HybridRetriever
 from app.rag.reranker import rerank
 from app.rag.confidence import is_confident, NOT_FOUND_MESSAGE
@@ -50,6 +50,22 @@ def _retrieve_across_documents(
 
     all_results.sort(key=lambda x: x["score"], reverse=True)
     return all_results[:top_k]
+
+
+def _retrieve_multi_query(
+    queries: list[str], document_ids: list[str], top_k: int = 10
+) -> list[dict]:
+    """Retrieve for each query, merge and deduplicate by chunk text prefix."""
+    seen: set[str] = set()
+    merged: list[dict] = []
+    for q in queries:
+        for chunk in _retrieve_across_documents(q, document_ids, top_k=top_k):
+            key = chunk["text"][:80]
+            if key not in seen:
+                seen.add(key)
+                merged.append(chunk)
+    merged.sort(key=lambda x: x["score"], reverse=True)
+    return merged[:top_k * 2]
 
 
 def _build_sources(reranked: list[dict]) -> list[dict]:
@@ -99,12 +115,12 @@ def rag_answer(
     Main RAG pipeline. Returns:
     {"answer": str, "sources": [...], "session_id": str}
     """
-    # Step 1: Query rewriting
-    rewritten = rewrite_query(query, history)
-    logger.info(f"[RAG] Rewritten query: {rewritten!r}")
+    # Step 1: Multi-query generation
+    queries = generate_multi_queries(query, history)
+    logger.info(f"[RAG] Multi-queries: {queries}")
 
-    # Step 2: Hybrid retrieval
-    raw_chunks = _retrieve_across_documents(rewritten, document_ids)
+    # Step 2: Multi-query hybrid retrieval
+    raw_chunks = _retrieve_multi_query(queries, document_ids)
     if not raw_chunks:
         return {"answer": "没有可查询的文档内容。", "sources": [], "session_id": session_id}
 
@@ -114,8 +130,8 @@ def rag_answer(
         if doc_id in document_metadata:
             chunk["metadata"].update(document_metadata[doc_id])
 
-    # Step 3: Rerank
-    reranked = rerank(rewritten, raw_chunks, top_n=5)
+    # Step 3: Rerank (use primary query)
+    reranked = rerank(queries[0], raw_chunks, top_n=5)
 
     # Step 4: Confidence check
     if not is_confident(reranked):
@@ -158,9 +174,10 @@ def rag_answer_stream(
       {"type": "end",     "answer": str}
       {"type": "error",   "message": str}
     """
-    rewritten = rewrite_query(query, history)
+    queries = generate_multi_queries(query, history)
+    logger.info(f"[RAG] Multi-queries (stream): {queries}")
 
-    raw_chunks = _retrieve_across_documents(rewritten, document_ids)
+    raw_chunks = _retrieve_multi_query(queries, document_ids)
     if not raw_chunks:
         yield {"type": "error", "message": "没有可查询的文档内容。"}
         return
@@ -170,7 +187,7 @@ def rag_answer_stream(
         if doc_id in document_metadata:
             chunk["metadata"].update(document_metadata[doc_id])
 
-    reranked = rerank(rewritten, raw_chunks, top_n=5)
+    reranked = rerank(queries[0], raw_chunks, top_n=5)
 
     if not is_confident(reranked):
         yield {"type": "error", "message": NOT_FOUND_MESSAGE}

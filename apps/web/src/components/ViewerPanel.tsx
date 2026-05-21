@@ -1,6 +1,8 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 const PdfViewer = dynamic(
   () => import('./FileViewer/pdf-viewer/components/PDFViewer').then(m => m.PDFViewer),
@@ -53,6 +55,7 @@ function Viewer({ doc, jump }: { doc: Doc; jump: JumpLocation | null }) {
         <PdfViewer
           file={fileUrl}
           scrollToPage={jump?.page_num}
+          highlightText={jump?.chunk_text}
           highlightIndex={
             jump?.bbox
               ? {
@@ -96,6 +99,7 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [summaryText, setSummaryText] = useState<string | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryProgress, setSummaryProgress] = useState<{ current: number; total: number } | null>(null)
   const [showSummary, setShowSummary] = useState(false)
 
   useEffect(() => {
@@ -112,6 +116,7 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
   useEffect(() => {
     setSummaryText(null)
     setShowSummary(false)
+    setSummaryProgress(null)
   }, [selectedId])
 
   const selectedDoc = docs.find(d => d.document_id === selectedId) ?? null
@@ -164,19 +169,44 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
   async function fetchSummary() {
     if (!selectedDoc) return
     setShowSummary(true)
-    if (summaryText) return  // already loaded for this doc
+    if (summaryText) return
     setSummaryLoading(true)
+    setSummaryText('')
+    setSummaryProgress(null)
     try {
-      const res = await fetch(`/api/agent/documents/${selectedDoc.document_id}/summary`, {
+      const res = await fetch(`/api/agent/documents/${selectedDoc.document_id}/summary/stream`, {
         method: 'POST',
       })
-      const data = await res.json()
-      if (res.ok) setSummaryText(data.summary)
-      else setSummaryText('生成摘要失败，请重试。')
+      if (!res.ok) { setSummaryText('生成摘要失败，请重试。'); return }
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const event = JSON.parse(line.slice(6)) as { type: string; content?: string; current?: number; total?: number }
+            if (event.type === 'progress') {
+              setSummaryProgress({ current: event.current ?? 0, total: event.total ?? 1 })
+            }
+            if (event.type === 'delta') {
+              setSummaryLoading(false)
+              setSummaryProgress(null)
+              setSummaryText(prev => (prev ?? '') + (event.content ?? ''))
+            }
+          } catch { /* skip malformed */ }
+        }
+      }
     } catch {
       setSummaryText('网络错误，请重试。')
     } finally {
       setSummaryLoading(false)
+      setSummaryProgress(null)
     }
   }
 
@@ -252,18 +282,29 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
       )}
 
       {showSummary && (
-        <div className="border-b bg-purple-50 px-4 py-3 shrink-0 max-h-48 overflow-y-auto relative">
+        <div className="border-b bg-purple-50 px-4 py-3 shrink-0 max-h-56 overflow-y-auto relative">
           <button
             onClick={() => setShowSummary(false)}
             className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-xs"
           >
             ✕
           </button>
-          <p className="text-xs font-semibold text-purple-700 mb-1">文档摘要</p>
-          {summaryLoading ? (
-            <p className="text-xs text-gray-500">生成中，请稍候…</p>
-          ) : (
-            <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{summaryText}</p>
+          <p className="text-xs font-semibold text-purple-700 mb-2">文档摘要</p>
+          {summaryLoading && !summaryProgress && (
+            <p className="text-xs text-gray-500">初始化…</p>
+          )}
+          {summaryProgress && (
+            <p className="text-xs text-gray-500">分析文档中 {summaryProgress.current}/{summaryProgress.total}…</p>
+          )}
+          {summaryText !== null && summaryText !== '' && (
+            <div className="prose prose-xs max-w-none text-gray-700
+              prose-headings:text-gray-800 prose-headings:font-semibold prose-headings:text-xs prose-headings:mt-2 prose-headings:mb-1
+              prose-p:my-0.5 prose-p:text-xs prose-p:leading-relaxed
+              prose-ul:my-0.5 prose-ul:pl-4 prose-li:my-0 prose-li:text-xs
+              prose-strong:text-gray-900 prose-strong:font-semibold
+            ">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{summaryText}</ReactMarkdown>
+            </div>
           )}
         </div>
       )}
