@@ -1,11 +1,10 @@
-// apps/web/src/lib/auth.ts
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET ?? 'enterprise-rag-secret-2026'
 )
-const COOKIE_NAME = 'rag_token'
+export const COOKIE_NAME = 'ai_demo_token'
 const EXPIRES_IN = '7d'
 
 export interface JwtPayload {
@@ -39,13 +38,13 @@ export async function getSession(): Promise<JwtPayload | null> {
 }
 
 export function cookieOptions() {
+  const isProd = process.env.NODE_ENV === 'production'
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProd,
     sameSite: 'lax' as const,
     maxAge: 60 * 60 * 24 * 7,
     path: '/',
+    ...(isProd && { domain: '.luyaxiang.com' }),
   }
 }
-
-export { COOKIE_NAME }
