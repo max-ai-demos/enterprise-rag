@@ -49,11 +49,27 @@ function fileIcon(type: string) {
 
 function Viewer({ doc, jump }: { doc: Doc; jump: JumpLocation | null }) {
   const fileUrl = `/api/agent/documents/file/${doc.document_id}`
+  // Pre-fetch PDF with credentials so pdfjs worker (cross-origin) receives data directly
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (doc.file_type !== 'pdf') return
+    let revoke: string | null = null
+    fetch(fileUrl)
+      .then(r => r.blob())
+      .then(blob => {
+        const url = URL.createObjectURL(blob)
+        revoke = url
+        setPdfBlobUrl(url)
+      })
+      .catch(() => setPdfBlobUrl(null))
+    return () => { if (revoke) URL.revokeObjectURL(revoke) }
+  }, [fileUrl, doc.file_type])
+
   switch (doc.file_type) {
     case 'pdf':
       return (
         <PdfViewer
-          file={fileUrl}
+          file={pdfBlobUrl}
           scrollToPage={jump?.page_num}
           highlightText={jump?.chunk_text}
           highlightIndex={

@@ -30,8 +30,8 @@ import { bboxToHighlightArea, bboxToScrollOffsetTopPx } from '../../utils/highli
 import { PdfTextSelectionOverlay } from '../PdfTextSelection';
 import type { PdfTextSelectionHighlightPayload } from '../PdfTextSelection/types';
 
-const PDFJS_WORKER_URL = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-const PDFJS_CMAP_URL = 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/';
+const PDFJS_WORKER_URL = '/pdf.worker.min.mjs';
+const PDFJS_CMAP_URL = 'https://unpkg.com/pdfjs-dist@4.8.69/cmaps/';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';

@@ -22,7 +22,12 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
   try {
     // @ts-expect-error duplex is required for streaming request bodies in Node.js fetch
     const agentRes = await fetch(agentUrl, { method: req.method, headers, body, duplex: 'half' })
-    return new NextResponse(agentRes.body, { status: agentRes.status, headers: agentRes.headers })
+    // Strip hop-by-hop headers illegal in HTTP/2 (transfer-encoding, connection, keep-alive)
+    const resHeaders = new Headers(agentRes.headers)
+    resHeaders.delete('transfer-encoding')
+    resHeaders.delete('connection')
+    resHeaders.delete('keep-alive')
+    return new NextResponse(agentRes.body, { status: agentRes.status, headers: resHeaders })
   } catch (err) {
     console.error('[proxy] fetch error:', err)
     return NextResponse.json({ error: 'Proxy error' }, { status: 500 })

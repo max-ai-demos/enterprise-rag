@@ -20,7 +20,7 @@ class User(Base):
 class Document(Base):
     __tablename__ = "documents"
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    user_id = Column(String(36), nullable=True)
     filename = Column(String(500), nullable=False)
     file_path = Column(String(1000), nullable=False)
     file_type = Column(String(20), nullable=False)
@@ -36,7 +36,7 @@ class Document(Base):
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    user_id = Column(String(36), nullable=False)
     title = Column(String(255))
     mode = Column(String(20), default="upload")
     created_at = Column(DateTime, default=datetime.utcnow)

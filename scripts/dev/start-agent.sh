@@ -10,6 +10,7 @@ sleep 1
 
 cd "$AGENT_DIR"
 set -a; source .env; set +a
+unset ALL_PROXY all_proxy  # SOCKS proxy breaks httpx without socksio
 mkdir -p "$REPO/.runtime"
 nohup .venv/bin/uvicorn main:app --host 0.0.0.0 --port $PORT > "$LOG" 2>&1 &
 echo $! > "$REPO/.runtime/agent.pid"
