@@ -26,6 +26,7 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
       const json = await req.json()
       body = JSON.stringify({ ...json, namespace: NAMESPACE, user_id: session.user_id })
       headers.set('content-type', 'application/json')
+      headers.set('content-length', Buffer.byteLength(body).toString())
     } else {
       body = req.body ?? undefined
     }
