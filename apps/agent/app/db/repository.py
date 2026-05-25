@@ -2,6 +2,7 @@
 import json
 import uuid
 from typing import Optional
+from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.db.models import Document, ChatSession, Message
@@ -91,10 +92,9 @@ class SessionRepository:
             self.db.commit()
 
     def touch(self, session_id: str):
-        from datetime import datetime
         s = self.get_by_id(session_id)
         if s:
-            s.updated_at = datetime.utcnow()
+            s.updated_at = datetime.now(timezone.utc)
             self.db.commit()
 
 

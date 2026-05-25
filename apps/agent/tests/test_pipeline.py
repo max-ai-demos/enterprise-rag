@@ -24,40 +24,80 @@ def test_query_rewriter_with_context(monkeypatch):
     assert "payment" in result.lower() or "deadline" in result.lower()
 
 def test_hybrid_retriever_returns_results(monkeypatch):
-    """Verify hybrid retriever merges vector + BM25 results and deduplicates."""
+    """Verify hybrid retriever merges vector + BM25 SQL results and deduplicates."""
     from unittest.mock import MagicMock
     from app.rag.hybrid_retriever import HybridRetriever
 
-    sample_chunks = [
-        {"id": "doc1_0", "text": "The payment deadline is 30 days from invoice.",
-         "embedding": [0.1] * 1536, "metadata": {"document_id": "doc1", "page_num": 1}},
-        {"id": "doc1_1", "text": "Late fees apply after the payment deadline passes.",
-         "embedding": [0.2] * 1536, "metadata": {"document_id": "doc1", "page_num": 1}},
-        {"id": "doc1_2", "text": "Contract termination requires 90 days notice.",
-         "embedding": [0.3] * 1536, "metadata": {"document_id": "doc1", "page_num": 2}},
-    ]
-
-    mock_repo = MagicMock()
-    mock_repo.get_all_for_document.return_value = sample_chunks
-
+    # Mock _embed_query so no OpenAI call
     monkeypatch.setattr(
         "app.rag.hybrid_retriever._embed_query",
         lambda q: [0.1] * 1536,
     )
 
-    def mock_chunk_repo(db):
-        return mock_repo
+    # Build fake SQL row objects for the vector search result
+    def _make_row(id_, text, score, page_num=1):
+        r = MagicMock()
+        r.id = id_
+        r.text = text
+        r.cosine_score = score
+        r.page_num = page_num
+        r.page_idx = page_num
+        r.bbox = None
+        r.paragraph_idx = None
+        r.sheet_name = None
+        r.row_start = None
+        r.file_type = "pdf"
+        return r
 
-    monkeypatch.setattr("app.db.repository.ChunkRepository", mock_chunk_repo)
+    vector_rows = [
+        _make_row("doc1_0", "The payment deadline is 30 days from invoice.", 0.92),
+        _make_row("doc1_1", "Late fees apply after the payment deadline passes.", 0.85),
+        _make_row("doc1_2", "Contract termination requires 90 days notice.", 0.70),
+    ]
+
+    # BM25 returns same rows (overlap → RRF boost for doc1_0 and doc1_1)
+    def _make_bm25_row(id_, text, bm25, page_num=1):
+        r = MagicMock()
+        r.id = id_
+        r.text = text
+        r.bm25_score = bm25
+        r.page_num = page_num
+        r.page_idx = page_num
+        r.bbox = None
+        r.paragraph_idx = None
+        r.sheet_name = None
+        r.row_start = None
+        r.file_type = "pdf"
+        return r
+
+    bm25_rows = [
+        _make_bm25_row("doc1_0", "The payment deadline is 30 days from invoice.", 12.3),
+        _make_bm25_row("doc1_1", "Late fees apply after the payment deadline passes.", 9.1),
+    ]
+
+    call_count = [0]
+
+    def mock_execute(stmt, params=None):
+        result = MagicMock()
+        if call_count[0] == 0:
+            result.fetchall.return_value = vector_rows
+        else:
+            result.fetchall.return_value = bm25_rows
+        call_count[0] += 1
+        return result
 
     db = MagicMock()
+    db.execute.side_effect = mock_execute
+
     retriever = HybridRetriever(db=db, document_id="doc1")
     results = retriever.retrieve("payment deadline", top_k=5)
 
     assert len(results) > 0
     assert all("text" in r and "score" in r and "metadata" in r for r in results)
     ids = [r["id"] for r in results]
-    assert len(ids) == len(set(ids))
+    assert len(ids) == len(set(ids)), "Duplicate IDs returned"
+    # Overlapping chunks (doc1_0, doc1_1) should rank highest via RRF boost
+    assert ids[0] in ("doc1_0", "doc1_1")
 
 def test_confidence_check_passes():
     from app.rag.confidence import is_confident

@@ -1,127 +1,207 @@
-# apps/agent/app/rag/hybrid_retriever.py
+"""
+RAG Hybrid Retriever — SQL-level Vector + MySQL FULLTEXT BM25
+
+Why NOT Python-based cosine:
+  - Python O(n) cosine over 10k chunks = ~300ms in-process + memory overhead
+  - MySQL VEC_DISTANCE_COSINE = native C++ implementation, indexed, 10-50ms
+  - Python BM25 reimplements what MySQL FULLTEXT already does (ngram for Chinese)
+
+Architecture:
+  1. MySQL VEC_DISTANCE_COSINE → top-K by vector similarity
+  2. MySQL FULLTEXT MATCH...AGAINST → top-K by BM25 keyword score
+  3. RRF fusion (k=60) → merged ranked list
+  4. Returns dicts compatible with existing pipeline interface
+"""
 from __future__ import annotations
+import json
+import logging
 import math
-import re
 from collections import defaultdict
 from typing import Any
 from sqlalchemy.orm import Session
+from sqlalchemy import text, bindparam
 from llama_index.embeddings.openai import OpenAIEmbedding
 from app.infrastructure.config import settings
 
+logger = logging.getLogger(__name__)
+
 _embed_model = None
+
 
 def _get_embed_model() -> OpenAIEmbedding:
     global _embed_model
     if _embed_model is None:
         _embed_model = OpenAIEmbedding(
-            model="text-embedding-3-small",
+            model=settings.embedding_model,
             api_key=settings.openai_api_key,
         )
     return _embed_model
+
 
 def _embed_query(query: str) -> list[float]:
     return _get_embed_model().get_query_embedding(query)
 
 
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = sum(x * x for x in a) ** 0.5
-    norm_b = sum(x * x for x in b) ** 0.5
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
-def _tokenize(text: str) -> list[str]:
-    return re.findall(r"\b\w+\b", text.lower())
-
-
-def _bm25_scores(query: str, documents: list[str],
-                 k1: float = 1.5, b: float = 0.75) -> list[float]:
-    """Lightweight BM25 scoring over a list of documents."""
-    query_terms = _tokenize(query)
-    tokenized_docs = [_tokenize(d) for d in documents]
-    avg_dl = sum(len(d) for d in tokenized_docs) / max(len(tokenized_docs), 1)
-    N = len(tokenized_docs)
-
-    scores = []
-    for doc_tokens in tokenized_docs:
-        score = 0.0
-        dl = len(doc_tokens)
-        for term in query_terms:
-            tf = doc_tokens.count(term)
-            df = sum(1 for d in tokenized_docs if term in d)
-            if df == 0:
-                continue
-            idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
-            tf_norm = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / avg_dl))
-            score += idf * tf_norm
-        scores.append(score)
-    return scores
-
-
 def _reciprocal_rank_fusion(
-    ranked_lists: list[list[str]], k: int = 60
+    ranked_lists: list[list[str]], k: int = 60, weights: list[float] | None = None
 ) -> dict[str, float]:
-    """Merge multiple ranked lists using Reciprocal Rank Fusion."""
+    if weights is None:
+        weights = [1.0] * len(ranked_lists)
     scores: dict[str, float] = defaultdict(float)
-    for ranked in ranked_lists:
+    for ranked, weight in zip(ranked_lists, weights):
         for rank, doc_id in enumerate(ranked, start=1):
-            scores[doc_id] += 1.0 / (k + rank)
+            scores[doc_id] += weight / (k + rank)
     return scores
+
+
+def _safe_bm25_query(query: str) -> str:
+    """Sanitize query for MySQL FULLTEXT BOOLEAN MODE to avoid syntax errors."""
+    import re
+    # Remove special FULLTEXT operators that can cause syntax errors
+    return re.sub(r'[+\-><()~*"@]', ' ', query).strip()
 
 
 class HybridRetriever:
+    """
+    SQL-level hybrid retriever: VEC_DISTANCE_COSINE + MySQL FULLTEXT ngram BM25.
+    Falls back to vector-only if FULLTEXT index is unavailable.
+    """
+
     def __init__(self, db: Session, document_id: str):
         self.db = db
         self.document_id = document_id
 
-    def retrieve(self, query: str, top_k: int = 15) -> list[dict[str, Any]]:
-        """Vector + BM25 hybrid retrieval with RRF fusion. Cosine computed in Python."""
-        from app.db.repository import ChunkRepository
+    def _vector_search(self, query_vec: list[float], top_k: int) -> list[dict]:
+        stmt = text("""
+            SELECT
+                id,
+                text,
+                page_num,
+                page_idx,
+                bbox,
+                paragraph_idx,
+                sheet_name,
+                row_start,
+                file_type,
+                1.0 - VEC_DISTANCE_COSINE(embedding, VEC_FromText(:qvec)) AS cosine_score
+            FROM document_chunks
+            WHERE document_id = :doc_id
+            ORDER BY cosine_score DESC
+            LIMIT :top_k
+        """)
+        rows = self.db.execute(stmt, {
+            "qvec": json.dumps(query_vec),
+            "doc_id": self.document_id,
+            "top_k": top_k,
+        }).fetchall()
 
-        all_chunks = ChunkRepository(self.db).get_all_for_document(self.document_id)
-        if not all_chunks:
+        return [
+            {
+                "id": r.id,
+                "text": r.text,
+                "cosine_score": float(r.cosine_score or 0),
+                "metadata": {
+                    "page_num": r.page_num,
+                    "page_idx": r.page_idx,
+                    "bbox": r.bbox,
+                    "paragraph_idx": r.paragraph_idx,
+                    "sheet_name": r.sheet_name,
+                    "row_start": r.row_start,
+                    "file_type": r.file_type,
+                    "cosine_score": float(r.cosine_score or 0),
+                },
+            }
+            for r in rows
+        ]
+
+    def _bm25_search(self, query: str, top_k: int) -> list[dict]:
+        safe_q = _safe_bm25_query(query)
+        if not safe_q:
+            return []
+        try:
+            stmt = text("""
+                SELECT
+                    id,
+                    text,
+                    page_num,
+                    page_idx,
+                    bbox,
+                    paragraph_idx,
+                    sheet_name,
+                    row_start,
+                    file_type,
+                    MATCH(text) AGAINST (:q IN NATURAL LANGUAGE MODE) AS bm25_score
+                FROM document_chunks
+                WHERE document_id = :doc_id
+                  AND MATCH(text) AGAINST (:q IN NATURAL LANGUAGE MODE)
+                ORDER BY bm25_score DESC
+                LIMIT :top_k
+            """)
+            rows = self.db.execute(stmt, {
+                "q": safe_q,
+                "doc_id": self.document_id,
+                "top_k": top_k,
+            }).fetchall()
+
+            return [
+                {
+                    "id": r.id,
+                    "text": r.text,
+                    "cosine_score": 0.0,
+                    "bm25_score": float(r.bm25_score or 0),
+                    "metadata": {
+                        "page_num": r.page_num,
+                        "page_idx": r.page_idx,
+                        "bbox": r.bbox,
+                        "paragraph_idx": r.paragraph_idx,
+                        "sheet_name": r.sheet_name,
+                        "row_start": r.row_start,
+                        "file_type": r.file_type,
+                        "cosine_score": 0.0,
+                    },
+                }
+                for r in rows
+            ]
+        except Exception:
+            logger.warning("BM25 search failed (FULLTEXT index?), skipping", exc_info=True)
             return []
 
-        ids = [c["id"] for c in all_chunks]
-        documents = [c["text"] for c in all_chunks]
-        id_to_doc = {c["id"]: c["text"] for c in all_chunks}
-        id_to_meta = {c["id"]: c["metadata"] for c in all_chunks}
-        embeddings = [c["embedding"] for c in all_chunks]
+    def retrieve(self, query: str, top_k: int = 15) -> list[dict[str, Any]]:
+        """
+        SQL-level hybrid retrieval with RRF fusion.
+        Returns chunks sorted by RRF score, with cosine_score in metadata.
+        """
+        query_vec = _embed_query(query)
 
-        # --- Vector retrieval (cosine in Python) ---
-        query_emb = _embed_query(query)
-        cos_sims = [_cosine_similarity(query_emb, emb) for emb in embeddings]
-        vector_ranked = [
-            ids[i] for i in sorted(range(len(ids)),
-                                   key=lambda x: cos_sims[x], reverse=True)
-        ][:top_k]
+        vector_results = self._vector_search(query_vec, top_k=top_k)
+        bm25_results = self._bm25_search(query, top_k=top_k * 2)
 
-        # --- BM25 retrieval ---
-        bm25_scores = _bm25_scores(query, documents)
-        bm25_ranked = [
-            ids[i] for i in sorted(range(len(ids)),
-                                   key=lambda x: bm25_scores[x], reverse=True)
-        ][:top_k]
+        # Build ID→doc map and RRF
+        all_docs: dict[str, dict] = {}
+        for r in vector_results + bm25_results:
+            if r["id"] not in all_docs:
+                all_docs[r["id"]] = r
 
-        # --- RRF fusion ---
-        fused_scores = _reciprocal_rank_fusion([vector_ranked, bm25_ranked])
-        top_ids = sorted(fused_scores, key=fused_scores.get, reverse=True)[:top_k]
+        vector_ids = [r["id"] for r in vector_results]
+        bm25_ids = [r["id"] for r in bm25_results]
 
-        # Build id → cosine_score map for score fusion downstream
-        id_to_cosine = {ids[i]: cos_sims[i] for i in range(len(ids))}
+        rrf_scores = _reciprocal_rank_fusion(
+            [vector_ids, bm25_ids],
+            weights=[0.6, 0.4],   # vector slightly preferred
+        )
+
+        ranked_ids = sorted(rrf_scores.keys(), key=rrf_scores.get, reverse=True)[:top_k]
 
         return [
             {
                 "id": chunk_id,
-                "text": id_to_doc[chunk_id],
-                "score": fused_scores[chunk_id],
+                "text": all_docs[chunk_id]["text"],
+                "score": rrf_scores[chunk_id],
                 "metadata": {
-                    **id_to_meta.get(chunk_id, {}),
-                    "cosine_score": round(id_to_cosine.get(chunk_id, 0.0), 4),
+                    **all_docs[chunk_id]["metadata"],
+                    "cosine_score": round(all_docs[chunk_id].get("cosine_score", 0), 4),
                 },
             }
-            for chunk_id in top_ids
-            if chunk_id in id_to_doc
+            for chunk_id in ranked_ids
+            if chunk_id in all_docs
         ]

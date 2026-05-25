@@ -14,8 +14,37 @@ from app.rag.reranker import rerank
 from app.rag.score_fusion import apply_score_fusion
 from app.rag.confidence import is_confident, NOT_FOUND_MESSAGE
 from app.rag.prompt import build_messages
+from app.rag.memory import get_memories, add_memory
 
 logger = logging.getLogger(__name__)
+
+
+class _CircuitBreaker:
+    """Protect OpenAI calls: opens after 5 consecutive failures, resets after 60s."""
+    def __init__(self, threshold: int = 5, timeout: float = 60.0):
+        self._threshold = threshold
+        self._timeout = timeout
+        self._failures = 0
+        self._opened_at: float | None = None
+
+    def is_open(self) -> bool:
+        if self._opened_at and time.time() - self._opened_at > self._timeout:
+            self._failures = 0
+            self._opened_at = None
+        return self._opened_at is not None
+
+    def success(self) -> None:
+        self._failures = 0
+        self._opened_at = None
+
+    def failure(self) -> None:
+        self._failures += 1
+        if self._failures >= self._threshold:
+            self._opened_at = time.time()
+            logger.warning("[circuit_breaker] OPEN — OpenAI calls suspended for 60s")
+
+
+_cb = _CircuitBreaker()
 
 _openai_client: Optional[OpenAI] = None
 _async_openai_client: Optional[AsyncOpenAI] = None
@@ -36,25 +65,34 @@ def _get_async_openai() -> AsyncOpenAI:
 
 
 def _sanitize_markdown(text: Optional[str], streaming: bool = False) -> str:
-    """Fix common Markdown artifacts in LLM output.
+    """
+    Fix common Markdown artifacts in LLM output.
 
-    - Normalize `* ` bullets → `- `
-    - Remove stray single `*` before `-`
-    - Fix `**word* -` → `**word** -`
-    - Escape remaining lone `*` not part of `**`
-    - Convert `$...$` → `\\( ... \\)` and `$$...$$` → `\\[ ... \\]`
-      (block math skipped when streaming to avoid cross-token mismatches)
+    Streaming mode: ONLY apply transforms that are safe on partial token chunks.
+    Any regex that operates on multi-character patterns spanning token boundaries
+    must be deferred to non-streaming (full-text) post-processing.
+
+    Safe in streaming mode:
+      - Convert `* item` bullet to `- item` (line-start pattern, safe per-line)
+
+    Unsafe in streaming mode (deferred):
+      - Lone `*` escaping: `**bold**` split as `**bo` + `ld**` — regex sees lone `*`
+      - Math conversion: `$...$` can span tokens
     """
     if not text:
         return ""
     try:
         s = text
-        s = re.sub(r"(?m)^\*\s", "- ", s)
-        s = re.sub(r"(?<!\*)\*(?=-)", "", s)
-        s = re.sub(r"\*\*([^*\n]+)\*-\s", r"**\1** - ", s)
-        s = re.sub(r"(?<!\*)\*(?!\*)", r"\\*", s)
-        s = re.sub(r"\$([^\$\n]+)\$", r"\\( \1 \\)", s)
+        # Safe: convert `* ` at line start to `- ` (LLM often outputs wrong bullet style)
+        s = re.sub(r"(?m)^\* ", "- ", s)
+
         if not streaming:
+            # Non-streaming only: operate on complete text where all patterns are visible
+            s = re.sub(r"(?<!\*)\*(?=-)", "", s)             # stray `*` before `-`
+            s = re.sub(r"\*\*([^*\n]+)\*-\s", r"**\1** - ", s)  # fix `**word* -`
+            # Math: inline $...$ → \( \)
+            s = re.sub(r"\$([^\$\n]+)\$", r"\\( \1 \\)", s)
+            # Math: block $$...$$ → \[ \]
             s = re.sub(r"\$\$([\s\S]+?)\$\$", r"\\[ \1 \\]", s)
         return s
     except Exception:
@@ -133,6 +171,16 @@ async def _fetch_web_results_async(query: str) -> list[dict]:
     except WebSearchError as e:
         logger.warning(f"[RAG] Web search skipped: {e}")
         return []
+
+
+def _validate_citations(answer: str, sources: list[dict]) -> str:
+    """Strip [来源N] references where N exceeds the actual source count."""
+    n = len(sources)
+    if n == 0:
+        return re.sub(r'\[来源\d+\]', '', answer)
+    def _replace(m: re.Match) -> str:
+        return m.group(0) if 1 <= int(m.group(1)) <= n else ''
+    return re.sub(r'\[来源(\d+)\]', _replace, answer)
 
 
 def _build_sources(reranked: list[dict]) -> list[dict]:
@@ -236,7 +284,11 @@ def rag_answer(
         return {"answer": NOT_FOUND_MESSAGE, "sources": [], "session_id": session_id, "timings": timings}
 
     sources = _build_sources(reranked)
-    messages = build_messages(query, reranked, history)
+    user_facts = get_memories(user_id, query)
+    messages = build_messages(query, reranked, history, user_facts=user_facts)
+
+    if _cb.is_open():
+        return {"answer": "抱歉，AI 服务暂时不可用，请稍后重试。", "sources": [], "session_id": session_id, "timings": timings}
 
     t3 = time.perf_counter()
     try:
@@ -248,12 +300,16 @@ def rag_answer(
             temperature=0.3,
         )
         answer = _sanitize_markdown(response.choices[0].message.content or "")
+        answer = _validate_citations(answer, sources)
+        _cb.success()
     except Exception as e:
+        _cb.failure()
         logger.error(f"OpenAI completion failed: {e}")
         return {"answer": "抱歉，AI 服务暂时不可用，请稍后重试。", "sources": [], "session_id": session_id, "timings": timings}
     timings["llm_s"] = round(time.perf_counter() - t3, 3)
     timings["total_s"] = round(time.perf_counter() - t0, 3)
 
+    add_memory(user_id, query, answer)
     return {"answer": answer, "sources": sources, "session_id": session_id, "timings": timings}
 
 
@@ -306,7 +362,12 @@ def rag_answer_stream(
     sources = _build_sources(reranked)
     yield {"type": "sources", "sources": sources, "session_id": session_id, "timings": timings}
 
-    messages = build_messages(query, reranked, history)
+    if _cb.is_open():
+        yield {"type": "error", "message": "AI 服务暂时不可用，请稍后重试。"}
+        return
+
+    user_facts = get_memories(user_id, query)
+    messages = build_messages(query, reranked, history, user_facts=user_facts)
 
     try:
         full_answer = ""
@@ -326,8 +387,12 @@ def rag_answer_stream(
                 yield {"type": "delta", "content": sanitized}
         timings["llm_stream_s"] = round(time.perf_counter() - t3, 3)
         timings["total_s"] = round(time.perf_counter() - t0, 3)
+        _cb.success()
+        full_answer = _validate_citations(full_answer, sources)
+        add_memory(user_id, query, full_answer)
         yield {"type": "end", "answer": full_answer, "timings": timings}
     except Exception as e:
+        _cb.failure()
         logger.error(f"Streaming failed: {e}")
         yield {"type": "error", "message": "AI 服务暂时不可用，请稍后重试。"}
 
@@ -390,7 +455,12 @@ async def rag_answer_stream_async(
     sources = _build_sources(reranked)
     yield {"type": "sources", "sources": sources, "session_id": session_id, "timings": timings}
 
-    messages = build_messages(query, reranked, history)
+    if _cb.is_open():
+        yield {"type": "error", "message": "AI 服务暂时不可用，请稍后重试。"}
+        return
+
+    user_facts = await asyncio.to_thread(get_memories, user_id, query)
+    messages = build_messages(query, reranked, history, user_facts=user_facts)
 
     try:
         full_answer = ""
@@ -410,7 +480,11 @@ async def rag_answer_stream_async(
                 yield {"type": "delta", "content": sanitized}
         timings["llm_stream_s"] = round(time.perf_counter() - t3, 3)
         timings["total_s"] = round(time.perf_counter() - t0, 3)
+        _cb.success()
+        full_answer = _validate_citations(full_answer, sources)
+        add_memory(user_id, query, full_answer)
         yield {"type": "end", "answer": full_answer, "timings": timings}
     except Exception as e:
+        _cb.failure()
         logger.error(f"Async streaming failed: {e}")
         yield {"type": "error", "message": "AI 服务暂时不可用，请稍后重试。"}

@@ -56,9 +56,18 @@ def build_messages(
     query: str,
     chunks: list[dict],
     history: list[dict],
+    user_facts: list[str] | None = None,
 ) -> list[dict]:
     """Build the full message list for OpenAI chat completion."""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    # Inject remembered user facts (from previous sessions)
+    if user_facts:
+        facts_text = "\n".join(f"- {f}" for f in user_facts)
+        messages.append({
+            "role": "system",
+            "content": f"## 已知用户背景信息（来自历史对话）\n{facts_text}",
+        })
 
     # Add document context
     context = build_context_block(chunks)

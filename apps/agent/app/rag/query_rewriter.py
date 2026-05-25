@@ -1,6 +1,11 @@
 # apps/agent/app/rag/query_rewriter.py
+import hashlib
+import time
 from openai import OpenAI
 from app.infrastructure.config import settings
+
+_CACHE: dict[str, tuple[list[str], float]] = {}
+_CACHE_TTL = 300  # seconds
 
 _client = None
 
@@ -25,8 +30,14 @@ def generate_multi_queries(query: str, history: list[dict]) -> list[str]:
     """
     Generate 3 diverse, self-contained retrieval queries.
     Resolves conversation context and expands to multiple phrasings in one LLM call.
-    Falls back to [query] on any error.
+    Falls back to [query] on any error. Results are cached for 5 minutes.
     """
+    hist_tail = "".join(f"{m['role']}:{m['content'][:40]}" for m in history[-2:])
+    cache_key = hashlib.md5((query + hist_tail).encode()).hexdigest()
+    cached = _CACHE.get(cache_key)
+    if cached and time.time() - cached[1] < _CACHE_TTL:
+        return cached[0]
+
     if history:
         recent = history[-6:]
         history_text = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in recent)
@@ -49,9 +60,12 @@ def generate_multi_queries(query: str, history: list[dict]) -> list[str]:
     try:
         result = _llm_complete(prompt, max_tokens=200)
         queries = [q.strip() for q in result.strip().splitlines() if q.strip()][:3]
-        return queries if queries else [query]
+        queries = queries if queries else [query]
     except Exception:
-        return [query]
+        queries = [query]
+
+    _CACHE[cache_key] = (queries, time.time())
+    return queries
 
 
 def rewrite_query(query: str, history: list[dict]) -> str:

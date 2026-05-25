@@ -3,7 +3,7 @@ import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.db.repository import DocumentRepository, SessionRepository, MessageRepository
@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
-    query: str
-    user_id: str
+    query: str = Field(..., min_length=1, max_length=4000)
+    user_id: str = Field(..., min_length=1, max_length=36)
     session_id: str | None = None
     document_ids: list[str] | None = None
     mode: str = "upload"           # "upload" | "demo"

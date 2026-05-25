@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     # 将 RERANKER_ALPHA 改为 0.0~1.0 之间的值即可激活
     reranker_alpha: float = 1.0
 
+    # --- Jina Reranker v2（跨编码器，非 LLM 打分）--- https://jina.ai ---
+    # 1. 注册 Jina AI 账号，获取 API Key（每月 1M tokens 免费）
+    # 2. 设置 JINA_API_KEY=<your-key>
+    # 无 Key 时自动降级为 score 排序，不影响功能
+    jina_api_key: str = ""
+
     # --- Chunking 策略 ---
     # "sentence"（默认）= LlamaIndex SentenceSplitter，通用文档
     # "smart" = 段落优先、句子兜底的 SmartChunker，适合合同/规章
