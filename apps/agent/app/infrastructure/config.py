@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     openai_api_key: str
     jwt_secret: str = "enterprise-demo-shared-secret-2026"
+    rag_service_url: str = ""
     database_url: str = "mysql+pymysql://root:Lyx2020.@localhost:3306/enterprise_rag?charset=utf8mb4"
     upload_dir: str = "../../data/uploads"
     demo_dir: str = "../../data/demo"

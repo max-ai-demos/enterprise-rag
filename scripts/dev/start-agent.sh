@@ -17,6 +17,7 @@ cd "$AGENT_DIR"
 set -a; source .env; set +a
 unset ALL_PROXY all_proxy  # SOCKS proxy breaks httpx without socksio
 mkdir -p "$REPO/.runtime"
+RAG_SERVICE_URL="http://localhost:$(python3 "$PORTS_PY" "_rag_service" agent)" \
 CORS_ORIGINS="http://localhost:${WEB_PORT},https://${DOMAIN}" \
 nohup .venv/bin/uvicorn main:app --host 0.0.0.0 --port $PORT > "$LOG" 2>&1 &
 echo $! > "$REPO/.runtime/agent.pid"

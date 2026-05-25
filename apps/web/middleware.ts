@@ -10,15 +10,63 @@ function buildLoginRedirect(loginUrl: string, originalUrl: string): string {
   return loginUrl
 }
 
+// Derive portal base URL from LOGIN_URL (strip /login suffix) or PORTAL_URL override.
+// Zero-config: if LOGIN_URL=https://demo.luyaxiang.com/login, portal is https://demo.luyaxiang.com.
+function portalUrl(): string {
+  if (process.env.PORTAL_URL) return process.env.PORTAL_URL
+  const u = process.env.LOGIN_URL ?? ''
+  return u.startsWith('http') ? u.replace(/\/login(\?.*)?$/, '') : 'http://localhost:3002'
+}
+
+// In-process cache for app config from portal DB (TTL 5 min).
+// In Next.js standalone, the process is persistent — the Map survives between requests.
+const _cache = new Map<string, { cfg: DemoCfg | null; exp: number }>()
+
+interface DemoCfg {
+  status: 'active' | 'maintenance' | 'disabled'
+  require_login: boolean
+}
+
+async function fetchDemoCfg(hostname: string): Promise<DemoCfg | null> {
+  const hit = _cache.get(hostname)
+  if (hit && Date.now() < hit.exp) return hit.cfg
+  try {
+    const res = await fetch(
+      `${portalUrl()}/api/demo-apps/by-domain?domain=${encodeURIComponent(hostname)}`,
+      { signal: AbortSignal.timeout(3000) }
+    )
+    const cfg: DemoCfg | null = res.ok ? await res.json() : null
+    _cache.set(hostname, { cfg, exp: Date.now() + (res.ok ? 5 * 60_000 : 30_000) })
+    return cfg
+  } catch {
+    _cache.set(hostname, { cfg: null, exp: Date.now() + 30_000 })
+    return null
+  }
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
-  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
-    return NextResponse.next()
-  }
+  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) return NextResponse.next()
 
   const loginUrl = process.env.LOGIN_URL ?? '/login'
-  const token = req.cookies.get(COOKIE_NAME)?.value
+  const hostname = req.headers.get('x-forwarded-host') ?? req.nextUrl.hostname
 
+  // Check status and require_login from portal DB.
+  // Fallback when portal is unreachable: treat as require_login=true (safe default).
+  const cfg = await fetchDemoCfg(hostname)
+  if (cfg?.status === 'disabled') {
+    return new NextResponse('此应用已下线', {
+      status: 410, headers: { 'content-type': 'text/plain; charset=utf-8' },
+    })
+  }
+  if (cfg?.status === 'maintenance') {
+    return new NextResponse('此应用维护中，请稍后访问', {
+      status: 503, headers: { 'content-type': 'text/plain; charset=utf-8' },
+    })
+  }
+  if (cfg?.require_login === false) return NextResponse.next()
+
+  const token = req.cookies.get(COOKIE_NAME)?.value
   if (!token) {
     return NextResponse.redirect(buildLoginRedirect(loginUrl, req.url))
   }
@@ -30,8 +78,6 @@ export async function middleware(req: NextRequest) {
   }
 
   const res = NextResponse.next()
-
-  // Auto-refresh token if nearing expiry — same threshold as portal (< 24h remaining)
   if (shouldRefreshToken(payload)) {
     const newToken = await signToken({
       user_id:  payload.user_id,
@@ -46,7 +92,6 @@ export async function middleware(req: NextRequest) {
       `${COOKIE_NAME}=${newToken}; Path=/; Max-Age=604800; Domain=.luyaxiang.com; Secure; HttpOnly; SameSite=Lax`
     )
   }
-
   return res
 }
 

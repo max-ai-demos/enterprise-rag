@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import document, chat, history, auth
+from app.api import document, chat, history, auth, rag_proxy
 from app.version import APP_VERSION
 import os
 
@@ -24,6 +24,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(rag_proxy.router, tags=["rag-proxy"])
 app.include_router(document.router, prefix="/documents", tags=["documents"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
 app.include_router(history.router, prefix="/sessions", tags=["history"])
