@@ -22,3 +22,7 @@ INTERNAL_NOTES.md
 
 # Runtime pids
 .runtime/
+
+# Local tooling
+.superpowers/
+test-summary.txt
