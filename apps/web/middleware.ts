@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyToken, COOKIE_NAME } from '@/lib/auth'
+import { verifyToken, signToken, cookieOptions, shouldRefreshToken, COOKIE_NAME } from '@/lib/auth'
 
 const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/health']
 
@@ -28,7 +28,26 @@ export async function middleware(req: NextRequest) {
     res.cookies.set(COOKIE_NAME, '', { maxAge: 0, path: '/' })
     return res
   }
-  return NextResponse.next()
+
+  const res = NextResponse.next()
+
+  // Auto-refresh token if nearing expiry — same threshold as portal (< 24h remaining)
+  if (shouldRefreshToken(payload)) {
+    const newToken = await signToken({
+      user_id:  payload.user_id,
+      org_id:   payload.org_id,
+      username: payload.username,
+      role:     payload.role,
+    })
+    const opts = cookieOptions()
+    res.cookies.set(COOKIE_NAME, newToken, opts)
+    res.headers.append(
+      'Set-Cookie',
+      `${COOKIE_NAME}=${newToken}; Path=/; Max-Age=604800; Domain=.luyaxiang.com; Secure; HttpOnly; SameSite=Lax`
+    )
+  }
+
+  return res
 }
 
 export const config = {

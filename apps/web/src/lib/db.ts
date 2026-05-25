@@ -14,6 +14,7 @@ const pool = mysql.createPool({
 
 export interface DbUser {
   id: string
+  org_id?: string
   username: string
   password_hash: string
   role: string
