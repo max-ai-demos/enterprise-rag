@@ -4,7 +4,7 @@ import { NavBar } from '@/components/NavBar'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
-  if (!session) redirect('/login')
+  if (!session) redirect(process.env.LOGIN_URL ?? 'https://demo.luyaxiang.com/login')
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       <NavBar username={session.username} />
