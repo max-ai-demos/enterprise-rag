@@ -5,7 +5,7 @@ import { ChatPanel } from '@/components/ChatPanel'
 
 interface Doc { document_id: string; filename: string; file_type: string; status: string }
 
-export default function ChatPage() {
+export default function TrialPage() {
   const [userId, setUserId] = useState('')
   const [docs, setDocs] = useState<Doc[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)

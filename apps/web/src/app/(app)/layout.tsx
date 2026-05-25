@@ -7,7 +7,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session) redirect(process.env.LOGIN_URL ?? 'https://demo.luyaxiang.com/login')
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
-      <NavBar username={session.username} />
+      <NavBar username={session.username} showTrialTab />
       <main className="flex-1 flex overflow-hidden min-h-0">{children}</main>
     </div>
   )
