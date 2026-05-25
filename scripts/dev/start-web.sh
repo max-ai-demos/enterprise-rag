@@ -23,6 +23,7 @@ mkdir -p "$REPO/.runtime"
 JWT_SECRET=enterprise-demo-shared-secret-2026 \
 AGENT_URL=http://localhost:${AGENT_PORT} \
 DB_HOST=localhost DB_PORT=3306 DB_USER=root DB_PASSWORD=Lyx2020. DB_NAME=enterprise_rag \
+LOGIN_URL=https://demo.luyaxiang.com/login \
 HOSTNAME=0.0.0.0 PORT=$WEB_PORT \
 nohup node .next/standalone/server.js > "$LOG" 2>&1 &
 echo $! > "$REPO/.runtime/web.pid"
