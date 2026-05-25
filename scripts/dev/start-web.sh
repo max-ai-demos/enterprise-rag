@@ -10,7 +10,7 @@ WEB_DIR="$REPO/apps/web"
 PORT=$WEB_PORT
 LOG="/Users/mac/.doc-cloud/logs/enterprise-rag-frontend.log"
 
-OLD=$(lsof -nP -iTCP:$PORT -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $2}' | head -1)
+OLD=$(lsof -nP -iTCP:$PORT -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $2}' | head -1 || true)
 [ -n "$OLD" ] && kill "$OLD" 2>/dev/null || true
 sleep 1
 
