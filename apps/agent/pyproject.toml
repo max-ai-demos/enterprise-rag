@@ -1,7 +1,7 @@
 # apps/agent/pyproject.toml
 [project]
 name = "enterprise-rag-agent"
-version = "0.1.4"
+version = "0.1.5"
 description = "Enterprise RAG demo agent"
 requires-python = ">=3.11"
 
