@@ -12,7 +12,7 @@ interface Message {
 }
 
 interface Session {
-  id: string
+  session_id: string
   title: string
   updated_at: string
 }
@@ -54,12 +54,12 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
   }, [userId, mode])
 
   async function loadSessions() {
-    const res = await fetch(`/api/agent/sessions?user_id=${userId}`)
+    const res = await fetch(`/api/agent/rag/sessions?user_id=${userId}&namespace=rag`)
     if (res.ok) setSessions(await res.json())
   }
 
   async function loadHistory(sid: string) {
-    const res = await fetch(`/api/agent/sessions/${sid}/messages?user_id=${userId}`)
+    const res = await fetch(`/api/agent/rag/sessions/${sid}/messages?user_id=${userId}`)
     if (!res.ok) return
     const data = await res.json()
     setMessages(data.map((m: { id: string; role: 'user' | 'assistant'; content: string; sources?: Source[] }) => ({
@@ -98,7 +98,7 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
 
     try {
       // Use streaming endpoint
-      const streamRes = await fetch('/api/agent/chat/stream', {
+      const streamRes = await fetch('/api/agent/rag/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -106,6 +106,7 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
           user_id: userId,
           session_id: activeSessionRef.current ?? undefined,
           mode,
+          namespace: 'rag',
         }),
       })
       if (!streamRes.ok) throw new Error('Stream request failed')
@@ -168,10 +169,10 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
           <div className="flex-1 overflow-y-auto">
             {sessions.map(s => (
               <button
-                key={s.id}
-                onClick={() => switchSession(s.id)}
+                key={s.session_id}
+                onClick={() => switchSession(s.session_id)}
                 className={`w-full text-left px-3 py-2 text-xs truncate transition-colors ${
-                  s.id === activeSessionId
+                  s.session_id === activeSessionId
                     ? 'bg-blue-50 text-blue-700 font-medium'
                     : 'text-gray-600 hover:bg-gray-100'
                 }`}
