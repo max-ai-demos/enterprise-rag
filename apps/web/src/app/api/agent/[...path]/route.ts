@@ -1,28 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 
-const AGENT_URL = process.env.AGENT_URL ?? 'http://localhost:8001'
+const AGENT_URL = process.env.AGENT_URL ?? 'http://localhost:8017'
+const NAMESPACE = 'rag'
 
 async function proxy(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { path } = await params
-  const agentPath = '/' + path.join('/')
+  const agentPath = '/api/rag/' + path.join('/')
   const url = new URL(req.url)
+  url.searchParams.set('namespace', NAMESPACE)
   const agentUrl = `${AGENT_URL}${agentPath}${url.search}`
 
   const headers = new Headers(req.headers)
   headers.set('x-user-id', session.user_id)
   headers.delete('host')
-  headers.delete('expect') // undici (Node.js fetch) doesn't support Expect: 100-continue
+  headers.delete('expect')
 
-  const body = req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined
+  let body: BodyInit | undefined = undefined
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    const ct = req.headers.get('content-type') ?? ''
+    if (path.some(p => p === 'chat') && ct.includes('application/json')) {
+      // Inject namespace into chat request body
+      const json = await req.json()
+      body = JSON.stringify({ ...json, namespace: NAMESPACE })
+      headers.set('content-type', 'application/json')
+    } else {
+      body = req.body ?? undefined
+    }
+  }
 
   try {
     // @ts-expect-error duplex is required for streaming request bodies in Node.js fetch
     const agentRes = await fetch(agentUrl, { method: req.method, headers, body, duplex: 'half' })
-    // Strip hop-by-hop headers illegal in HTTP/2 (transfer-encoding, connection, keep-alive)
     const resHeaders = new Headers(agentRes.headers)
     resHeaders.delete('transfer-encoding')
     resHeaders.delete('connection')

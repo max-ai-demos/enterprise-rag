@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import document, chat, history
 from app.version import APP_VERSION
+import os
 
 
 @asynccontextmanager
@@ -16,7 +17,7 @@ app = FastAPI(title="Enterprise RAG Agent", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3001"],
+    allow_origins=[o for o in os.getenv("CORS_ORIGINS", "").split(",") if o],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
