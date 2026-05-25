@@ -44,6 +44,14 @@ async function fetchDemoCfg(hostname: string): Promise<DemoCfg | null> {
   }
 }
 
+
+// Reconstruct the public URL from forwarded headers so the ?redirect= param is correct.
+function publicUrl(req: NextRequest): string {
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? req.nextUrl.hostname
+  const proto = req.headers.get('x-forwarded-proto') ?? (req.nextUrl.protocol.replace(':', ''))
+  return `${proto}://${host}${req.nextUrl.pathname}${req.nextUrl.search}`
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
   if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) return NextResponse.next()
@@ -68,11 +76,11 @@ export async function middleware(req: NextRequest) {
 
   const token = req.cookies.get(COOKIE_NAME)?.value
   if (!token) {
-    return NextResponse.redirect(buildLoginRedirect(loginUrl, req.url))
+    return NextResponse.redirect(buildLoginRedirect(loginUrl, publicUrl(req)))
   }
   const payload = await verifyToken(token)
   if (!payload) {
-    const res = NextResponse.redirect(buildLoginRedirect(loginUrl, req.url))
+    const res = NextResponse.redirect(buildLoginRedirect(loginUrl, publicUrl(req)))
     res.cookies.set(COOKIE_NAME, '', { maxAge: 0, path: '/' })
     return res
   }
