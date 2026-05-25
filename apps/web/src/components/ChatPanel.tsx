@@ -54,12 +54,12 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
   }, [userId, mode])
 
   async function loadSessions() {
-    const res = await fetch(`/api/agent/rag/sessions?user_id=${userId}&namespace=rag`)
+    const res = await fetch(`/api/agent/sessions?user_id=${userId}`)
     if (res.ok) setSessions(await res.json())
   }
 
   async function loadHistory(sid: string) {
-    const res = await fetch(`/api/agent/rag/sessions/${sid}/messages?user_id=${userId}`)
+    const res = await fetch(`/api/agent/sessions/${sid}/messages?user_id=${userId}`)
     if (!res.ok) return
     const data = await res.json()
     setMessages(data.map((m: { id: string; role: 'user' | 'assistant'; content: string; sources?: Source[] }) => ({
@@ -98,7 +98,7 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
 
     try {
       // Use streaming endpoint
-      const streamRes = await fetch('/api/agent/rag/chat/stream', {
+      const streamRes = await fetch('/api/agent/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -106,7 +106,6 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
           user_id: userId,
           session_id: activeSessionRef.current ?? undefined,
           mode,
-          namespace: 'rag',
         }),
       })
       if (!streamRes.ok) throw new Error('Stream request failed')

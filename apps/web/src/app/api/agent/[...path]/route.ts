@@ -23,9 +23,8 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     const ct = req.headers.get('content-type') ?? ''
     if (path.some(p => p === 'chat') && ct.includes('application/json')) {
-      // Inject namespace into chat request body
       const json = await req.json()
-      body = JSON.stringify({ ...json, namespace: NAMESPACE })
+      body = JSON.stringify({ ...json, namespace: NAMESPACE, user_id: session.user_id })
       headers.set('content-type', 'application/json')
     } else {
       body = req.body ?? undefined
