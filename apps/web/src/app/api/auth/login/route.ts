@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   if (isFormPost) {
     const host = req.headers.get('host') ?? 'luyaxiang.com'
     const proto = host.startsWith('localhost') || host.startsWith('127.') || host.startsWith('0.0.0.0') ? 'http' : 'https'
-    const res = NextResponse.redirect(`${proto}://${host}/demo`)
+    const res = NextResponse.redirect(`${proto}://${host}/`)
     res.cookies.set(COOKIE_NAME, token, cookieOptions())
     res.headers.append('Set-Cookie', `${COOKIE_NAME}=${token}; Path=/; Max-Age=604800; Domain=.luyaxiang.com; Secure; HttpOnly; SameSite=Lax`)
     return res
