@@ -12,6 +12,7 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
   const agentPath = '/api/rag/' + path.join('/')
   const url = new URL(req.url)
   url.searchParams.set('namespace', NAMESPACE)
+  url.searchParams.set('user_id', session.user_id)
   const agentUrl = `${AGENT_URL}${agentPath}${url.search}`
 
   const headers = new Headers(req.headers)
