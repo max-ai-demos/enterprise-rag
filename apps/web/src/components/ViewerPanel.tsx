@@ -258,7 +258,7 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
           </button>
         ))}
         {docs.length === 0 && (
-          <span className="text-xs text-gray-400">暂无文档</span>
+          <span className="text-xs text-slate-500">暂无文档</span>
         )}
         {mode === 'chat' && (
           <>
@@ -301,7 +301,7 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
         <div className="border-b bg-purple-50 px-4 py-3 shrink-0 max-h-56 overflow-y-auto relative">
           <button
             onClick={() => setShowSummary(false)}
-            className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-xs"
+            className="absolute top-2 right-2 text-slate-500 hover:text-gray-600 text-xs"
           >
             ✕
           </button>
@@ -329,7 +329,7 @@ export function ViewerPanel({ docs, activeDocId, jumpLocation, mode, userId, onU
         {selectedDoc ? (
           <Viewer doc={selectedDoc} jump={activeJump} />
         ) : (
-          <div className="flex flex-col items-center justify-center h-full text-sm text-gray-400 gap-2">
+          <div className="flex flex-col items-center justify-center h-full text-sm text-slate-500 gap-2">
             {mode === 'chat' ? (
               <>
                 <p>点击右上角「+ 上传」或将文件拖拽至此</p>

@@ -54,7 +54,7 @@ export function SourceCard({ sources, onJump }: SourceCardProps) {
             R
           </span>
           <span className="max-w-[100px] truncate">{s.filename}</span>
-          {sourceLabel(s) && <span className="text-gray-400 shrink-0">{sourceLabel(s)}</span>}
+          {sourceLabel(s) && <span className="text-slate-500 shrink-0">{sourceLabel(s)}</span>}
         </button>
       ))}
     </div>

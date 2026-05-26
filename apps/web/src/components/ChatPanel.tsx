@@ -157,7 +157,7 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
         <div className="w-56 border-r bg-gray-50 flex flex-col shrink-0">
           <div className="p-3 border-b flex items-center justify-between">
             <span className="text-xs font-medium text-gray-600">历史对话</span>
-            <button onClick={() => setShowSidebar(false)} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+            <button onClick={() => setShowSidebar(false)} className="text-slate-500 hover:text-gray-600 text-xs">✕</button>
           </div>
           <button
             onClick={startNewConversation}
@@ -180,7 +180,7 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
               </button>
             ))}
             {sessions.length === 0 && (
-              <p className="px-3 py-2 text-xs text-gray-400">暂无历史对话</p>
+              <p className="px-3 py-2 text-xs text-slate-500">暂无历史对话</p>
             )}
           </div>
         </div>
@@ -193,7 +193,7 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
             {mode === 'upload' && (
               <button
                 onClick={() => setShowSidebar(v => !v)}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
+                className="text-slate-500 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
                 title="历史对话"
               >
                 ☰
@@ -215,7 +215,7 @@ export function ChatPanel({ userId, sessionId, mode, onSessionCreated, onJumpToS
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
           {messages.length === 0 && (
             <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-gray-400">提问即可开始对话</p>
+              <p className="text-sm text-slate-500">提问即可开始对话</p>
             </div>
           )}
           {messages.map(msg => (
